@@ -4,13 +4,15 @@ import { ListingsService } from './listings.service';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { CommitmentsService } from 'apps/commitments/src/commitments.service';
+import { NotificationsService } from 'apps/notifications/src/notifications.service';
 
 @Processor(LISTING_BMQ)
 export class ListingConsumer extends WorkerHost {
   private readonly logger: Logger = new Logger(ListingConsumer.name);
   constructor(
-    private readonly listingService: ListingsService,
+    private readonly listingsService: ListingsService,
     private readonly commitmentsService: CommitmentsService,
+    private readonly notificationsService: NotificationsService,
   ) {
     super();
   }
@@ -19,24 +21,36 @@ export class ListingConsumer extends WorkerHost {
     switch (job.name) {
       case 'closeListing': {
         // find out if this listing totalCommitment >= minThreshold
-        // if true, send out an order job event for creating the order (order bulk)
-        // else,  mark this listing as expired
+        // DEPRECATED: if true, send out an order job event for creating the order (order bulk)
+        // DEPRECATED: else,  mark this listing as expired
 
-        const { id: productId, sellerId } = job.data;
+        // NEW: if true, do following:
+        // 1. set finalPrice of the ProductListing to be a discounted price
+        // 2. send out a notify job event to notify users to buy product within 24 hours
+        // NEW: else, mark this listing as expired
+
+        const { id: listingId, sellerId } = job.data;
         // find out if this listing totalCommitment >= minThreshold
         const aggregatedCommitmentData =
           await this.commitmentsService.getAggregatedDataByListingId(
             sellerId,
-            productId,
+            listingId,
           );
         if (
           aggregatedCommitmentData.totalCommitments >=
           aggregatedCommitmentData.minThreshold
         ) {
-          // send out an order job event for creating the order (order bulk)
+          // 1. set finalPrice of the ProductListing to be a discounted price
+          await this.listingsService.setListingFinalPrice(
+            listingId,
+            aggregatedCommitmentData.totalCommitments,
+            aggregatedCommitmentData.minThreshold,
+          );
+          // 2. send out a notify job event to notify users to buy product within 24 hours
+          
         } else {
           // mark this listing as expired
-          await this.listingService.closeExpiredListing(productId);
+          await this.listingsService.closeExpiredListing(listingId);
         }
 
         return {};

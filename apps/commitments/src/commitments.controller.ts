@@ -59,4 +59,9 @@ export class CommitmentsController {
   ) {
     await this.commitmentsService.cancelCommitment(userId, id);
   }
+
+  @MessagePattern({ cmd: 'closeExpiredCommitment' })
+  async closeExpiredCommitment(@Payload('id') id: string) {
+    await this.commitmentsService.closeExpiredCommitment(id);
+  }
 }

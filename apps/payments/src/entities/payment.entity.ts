@@ -10,30 +10,30 @@ import {
 } from 'typeorm';
 
 @Entity()
-export class Payment extends DefaultEntity{
+export class Payment extends DefaultEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({
     unique: true,
-    length: 255,
+    nullable: true,
   })
-  invoiceId: string; // Xendit invoice ID
+  stripeSessionId?: string; // Stripe session ID
 
   @ManyToOne(() => Order, {
     onDelete: 'SET NULL',
-    nullable: false,
+    nullable: true,
   })
   @JoinColumn()
-  order: Order;
+  order?: Order;
 
   @Column({
     type: 'numeric',
     precision: 15,
     scale: 2,
-    nullable: false,
+    nullable: true,
   })
-  amount: number;
+  amount?: number;
 
   @Column({
     type: 'enum',
@@ -43,7 +43,8 @@ export class Payment extends DefaultEntity{
   status: PaymentStatus;
 
   @Column({
-    length: 50,
+    unique: true,
+    nullable: true,
   })
-  paymentChannel: string; // OVO, Bank Transfer, Alfamart
+  stripePaymentIntentId: string; // stripe's paymentIntent
 }

@@ -3,7 +3,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Product } from './entities/product.entity';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 @Injectable()
 export class ProductsService {
@@ -39,8 +39,11 @@ export class ProductsService {
     });
   }
 
-  async findOne(sellerId: string, id: string) {
-    const product = await this.productRepository.findOne({
+  async findOne(sellerId: string, id: string, manager?: EntityManager) {
+    const repo = manager
+      ? manager.getRepository(Product)
+      : this.productRepository;
+    const product = await repo.findOne({
       where: {
         id,
         seller: {
@@ -55,6 +58,11 @@ export class ProductsService {
       relations: {
         seller: true,
       },
+      ...(manager && {
+        lock: {
+          mode: 'pessimistic_write',
+        },
+      }),
     });
 
     if (!product) {

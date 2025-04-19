@@ -1,19 +1,22 @@
 import { LISTING_BMQ } from '@app/common/bullmq/bullmq.constant';
-import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import {
+  InjectQueue,
+  OnWorkerEvent,
+  Processor,
+  WorkerHost,
+} from '@nestjs/bullmq';
+import { Job, Queue } from 'bullmq';
 import { Inject, Logger } from '@nestjs/common';
 import {
   COMMITMENTS_MICROSERVICE,
   LISTINGS_MICROSERVICE,
+  NOTIFICATIONS_MICROSERVICE,
   ORDERS_MICROSERVICE,
 } from '../gateway.constant';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
-import { UpdateListingDto } from 'apps/listings/src/dto/update-listing.dto';
-import { ProductListing } from 'apps/listings/src/entities/product-listing.entity';
 import { Commitment } from 'apps/commitments/src/entities/commitment.entity';
-import { CreateOrderDto } from 'apps/orders/src/dto/create-order.dto';
-import { OrderStatus } from '@app/common/enums/order-status.enum';
+import { NotificationType } from '@app/common';
 
 @Processor(LISTING_BMQ)
 export class ListingsConsumer extends WorkerHost {
@@ -25,6 +28,9 @@ export class ListingsConsumer extends WorkerHost {
     private readonly commitmentsMicroservice: ClientProxy,
     @Inject(ORDERS_MICROSERVICE)
     private readonly ordersMicroservice: ClientProxy,
+    @Inject(NOTIFICATIONS_MICROSERVICE)
+    private readonly notificationsMicroservice: ClientProxy,
+    @InjectQueue(LISTING_BMQ) private readonly listingQueue: Queue,
   ) {
     super();
   }
@@ -33,8 +39,11 @@ export class ListingsConsumer extends WorkerHost {
     switch (job.name) {
       case 'closeListing':
         // find out if this listing totalCommitment >= minThreshold
-        // if true, send out an order job event for creating the order (order bulk)
-        // else,  mark this listing as expired
+
+        // NEW: if true, do following:
+        // 1. set finalPrice of the ProductListing to be a discounted price
+        // 2. send out a notify job event to notify users to buy product within 24 hours
+        // NEW: else, mark this listing as expired
 
         const { id: listingId, sellerId } = job.data;
         // find out if this listing totalCommitment >= minThreshold
@@ -52,15 +61,31 @@ export class ListingsConsumer extends WorkerHost {
           aggregatedCommitmentData.totalCommitments >=
           aggregatedCommitmentData.minThreshold
         ) {
-          const listing: ProductListing = await firstValueFrom(
+          // now lock the product listing as it has met minimum threshold
+          await firstValueFrom(
             this.listingsMicroservice.send(
-              {
-                cmd: 'getListingById',
-              },
+              { cmd: 'lockListing' },
               {
                 id: listingId,
               },
             ),
+            {
+              defaultValue: null,
+            },
+          );
+          // 1. set finalPrice of the ProductListing to be a discounted price
+          await firstValueFrom(
+            this.listingsMicroservice.send(
+              { cmd: 'setListingFinalPrice' },
+              {
+                id: listingId,
+                totalCommitments: aggregatedCommitmentData.totalCommitments,
+                minThreshold: aggregatedCommitmentData.minThreshold,
+              },
+            ),
+            {
+              defaultValue: null,
+            },
           );
           const commitments: Commitment[] = await firstValueFrom(
             this.commitmentsMicroservice.send(
@@ -73,45 +98,67 @@ export class ListingsConsumer extends WorkerHost {
               },
             ),
           );
-          // lock the listing and set the final price
-          const finalPrice =
-            ((Math.random() * aggregatedCommitmentData.totalCommitments) /
-              aggregatedCommitmentData.totalCommitments) *
-            listing.proposedPrice;
 
-          await firstValueFrom(
-            this.listingsMicroservice.send(
-              { cmd: 'updateListingId' },
-              {
-                userId: sellerId,
-                id: listingId,
-                updateListingDto: {
-                  locked: true,
-                  finalPrice,
-                } as UpdateListingDto,
-              },
-            ),
+          // 2. send out a notify job event to notify users to buy product within 24 hours
+
+          await Promise.all(
+            commitments.map(async (commitment) => {
+              return await firstValueFrom(
+                this.notificationsMicroservice.send(
+                  { cmd: 'createNotification' },
+                  {
+                    userId: commitment.buyer.id,
+                    type: [
+                      NotificationType.SMS,
+                      NotificationType.InApp,
+                    ] as NotificationType[],
+                    message:
+                      "Commitment locked!\nProduct listing of commitment is available to be pruchased at a lower price for a limited time!\nHead over to our app to purchase the deal. Hurry! You don't want to miss out on this!",
+                  },
+                ),
+              ).then(async (result) => {
+                // send a job event to expire commitment in 24 hours
+                this.logger.log(
+                  `commitment ${commitment.id} has been notified`,
+                );
+                await this.listingQueue.add(
+                  'closeCommitment',
+                  {
+                    id: commitment.id,
+                  },
+                  {
+                    delay: 24 * 60 * 60 * 1000, // in ms
+                    jobId: `closeCommitment_${commitment.id}`,
+                    removeOnComplete: true,
+                    removeOnFail: false,
+                  },
+                );
+                return result;
+              });
+            }),
           );
-          // send out an order job event for creating the order (order bulk)
-          await this.ordersMicroservice.emit('createOrderBulk', {
-            createOrderDtos: commitments.map(
-              (commitment) =>
-                ({
-                  commitmentId: commitment.id,
-                  buyerId: commitment.buyer.id,
-                  price: finalPrice,
-                  lockedAt: listing.updatedAt.toDateString(), // TODO: not sure if correct/accurate
-                  shippingAddress: '1211 Ratel St', // TODO: add shippingAddress attribute to User
-                  status: OrderStatus.Pending,
-                }) as CreateOrderDto,
-            ),
-          });
+
+          // in frontend, user will see this notification, and frontend code will request user to complete order which will call our payments microservice to complete purchase and create order
         } else {
           // mark this listing as expired
-          this.listingsMicroservice.emit('closeExpiredListing', {
-            id: listingId,
-          });
+          await this.listingsMicroservice.send(
+            { cmd: 'closeExpiredListing' },
+            {
+              id: listingId,
+            },
+          );
         }
+
+        return {};
+
+      case 'closeCommitment':
+        const { id: commitmentId } = job.data;
+        await this.commitmentsMicroservice.send(
+          { cmd: 'closeExpiredCommitment' },
+          {
+            id: commitmentId,
+          },
+        );
 
         return {};
 
@@ -137,7 +184,7 @@ export class ListingsConsumer extends WorkerHost {
   @OnWorkerEvent('failed')
   onFailed(job: Job, error: any) {
     this.logger.log(
-      `Job ${job.id} of type ${job.name} with data ${JSON.stringify(job.data)} has failed.\nError details: ${JSON.stringify(error)}`,
+      `Job ${job.id} of type ${job.name} with data ${JSON.stringify(job.data)} has failed.\nError details: ${error}`,
     );
   }
 

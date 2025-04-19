@@ -14,7 +14,7 @@ import { AuthGatewayModule } from '@app/common/auth-gateway/auth-gateway.module'
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: './apps/listings/.env.development',
+      envFilePath: './apps/commitments/.env.development',
     }),
     DatabaseModule,
     AuthGatewayModule,

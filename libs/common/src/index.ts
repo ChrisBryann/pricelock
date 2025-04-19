@@ -6,3 +6,5 @@ export * from './enums/notification-type.enum';
 export * from './enums/notification-status.enum';
 
 export * from './http/http.interceptor';
+
+export * from './utils/address.util';

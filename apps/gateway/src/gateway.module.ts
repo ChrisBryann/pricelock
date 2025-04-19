@@ -17,11 +17,14 @@ import { AuthGatewayModule } from '@app/common/auth-gateway/auth-gateway.module'
 import {
   CommitmentsController,
   ListingsController,
+  OrdersController,
   ProductsController,
   UsersController,
+  PaymentsController,
 } from './microservices';
 import { BmqModule } from '@app/common/bullmq/bullmq.module';
 import { ListingsConsumer } from './consumers';
+import { LISTING_BMQ } from '@app/common/bullmq/bullmq.constant';
 
 @Module({
   imports: [
@@ -109,7 +112,7 @@ import { ListingsConsumer } from './consumers';
       },
     ]),
     AuthGatewayModule,
-    BmqModule,
+    BmqModule.register([LISTING_BMQ]),
   ],
   controllers: [
     GatewayController,
@@ -118,6 +121,8 @@ import { ListingsConsumer } from './consumers';
     ProductsController,
     ListingsController,
     CommitmentsController,
+    PaymentsController,
+    OrdersController,
   ],
   providers: [GatewayService, ListingsConsumer],
 })

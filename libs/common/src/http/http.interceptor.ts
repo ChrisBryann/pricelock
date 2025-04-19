@@ -39,7 +39,7 @@ export class HttpInterceptor implements NestInterceptor {
             new RpcException({
               statusCode: err.status || 500,
               message:
-                err.response.message || err.message || 'Internal server error',
+                err.response?.message ?? err.message ?? 'Internal server error',
             }),
         );
       }),
