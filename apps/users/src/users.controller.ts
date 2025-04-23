@@ -3,6 +3,7 @@ import { UsersService } from './users.service';
 import { PublicUser, User } from './entities/user.entity';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { MessagePattern, Payload } from '@nestjs/microservices';
+import { LinkUserToStripeDto } from './dtos/link-user-to-stripe.dto';
 
 @Controller('users')
 export class UsersController {
@@ -51,5 +52,17 @@ export class UsersController {
   @MessagePattern({ cmd: 'deleteUserById' })
   async deleteUserById(@Payload('id') id: string): Promise<void> {
     await this.usersService.deleteUserById(id);
+  }
+
+  @MessagePattern({ cmd: 'linkUserToStripeAccount' })
+  async linkUserToStripeAccount(
+    @Payload('id') id: string,
+    @Payload('linkUserToStripeDto') linkUserToStripeDto: LinkUserToStripeDto,
+    // combine stripeConnectAccountId, refresh and return url payload into one DTO
+  ): Promise<void> {
+    return await this.usersService.linkUserToStripeAccount(
+      id,
+      linkUserToStripeDto,
+    );
   }
 }

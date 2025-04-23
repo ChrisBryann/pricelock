@@ -8,26 +8,52 @@ import { PublicUser, User } from './entities/user.entity';
 import { DeepPartial, Repository } from 'typeorm';
 import { CryptoService } from '@app/common/crypto/crypto.service';
 import { RegisterUserDto } from 'apps/auth/src/dtos/register-user.dto';
+import Stripe from 'stripe';
+import { ConfigService } from '@nestjs/config';
+import { LinkUserToStripeDto } from './dtos/link-user-to-stripe.dto';
 
 @Injectable()
 export class UsersService {
+  private stripe: Stripe;
   constructor(
     @InjectRepository(User) private readonly usersRepository: Repository<User>,
     private readonly cryptoService: CryptoService,
-  ) {}
+    private readonly ConfigService: ConfigService,
+  ) {
+    this.stripe = new Stripe(
+      this.ConfigService.getOrThrow<string>('STRIPE_SECRET_KEY'),
+    );
+  }
 
   async createUser(registerUserDto: RegisterUserDto): Promise<PublicUser> {
     try {
-      const registeredUser = await this.getUserByEmail(registerUserDto.email);
+      await this.getUserByEmail(registerUserDto.email);
     } catch (error) {
-      const user = await this.usersRepository.save({
-        ...registerUserDto,
-        password: await this.cryptoService.hashPassword(
-          registerUserDto.password,
-        ),
+      return await this.usersRepository.manager.transaction(async (manager) => {
+        // create a Stripe Connect Account
+        const stripeUser = await this.stripe.accounts.create({
+          controller: {
+            stripe_dashboard: {
+              type: 'express',
+            },
+            fees: {
+              payer: 'application',
+            },
+            losses: {
+              payments: 'application',
+            },
+          },
+        });
+        const user = await manager.getRepository(User).save({
+          ...registerUserDto,
+          password: await this.cryptoService.hashPassword(
+            registerUserDto.password,
+          ),
+          stripeConnectAccountId: stripeUser.id,
+        });
+        const { password, ...userWithoutPassword } = user;
+        return userWithoutPassword;
       });
-      const { password, ...userWithoutPassword } = user;
-      return userWithoutPassword;
     }
     throw new ForbiddenException('User already exist!');
   }
@@ -86,5 +112,21 @@ export class UsersService {
       throw new NotFoundException('User not found!');
     }
     await this.usersRepository.remove(user);
+  }
+
+  async linkUserToStripeAccount(
+    userId: string,
+    linkUserToStripeDto: LinkUserToStripeDto,
+  ): Promise<{
+    url: string;
+  }> {
+    const accountLink = await this.stripe.accountLinks.create({
+      account: linkUserToStripeDto.stripeConnectAccountId,
+      refresh_url: linkUserToStripeDto.refreshUrl,
+      return_url: linkUserToStripeDto.returnUrl,
+      type: 'account_onboarding',
+    });
+
+    return { url: accountLink.url };
   }
 }

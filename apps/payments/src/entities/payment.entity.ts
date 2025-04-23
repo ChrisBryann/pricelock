@@ -1,6 +1,7 @@
 import { PaymentStatus } from '@app/common';
 import { DefaultEntity } from '@app/common/database/default.entity';
 import { Order } from 'apps/orders/src/entities/order.entity';
+import Decimal from 'decimal.js';
 import {
   Column,
   Entity,
@@ -31,9 +32,17 @@ export class Payment extends DefaultEntity {
     type: 'numeric',
     precision: 15,
     scale: 2,
+    transformer: {
+      // PostgreSQL returns int as string, so turn it to a Decimal object
+      to: (value: number | Decimal | null | undefined) => {
+        if (value === null || value === undefined) return null;
+        return value instanceof Decimal ? value.toString() : value;
+      },
+      from: (value: string | null) => (value ? new Decimal(value) : null),
+    },
     nullable: true,
   })
-  amount?: number;
+  amount?: Decimal;
 
   @Column({
     type: 'enum',

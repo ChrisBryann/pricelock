@@ -1,13 +1,13 @@
 import {
   Controller,
-  Get,
+  Headers,
   Inject,
   Param,
   Post,
-  Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
+import { Response } from 'express';
 import { PAYMENTS_MICROSERVICE } from '../gateway.constant';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
@@ -28,7 +28,7 @@ export class PaymentsController {
   @Post('/process/:commitmentId')
   async create(
     @Param('commitmentId') commitmentId: string,
-    @Req() req: Request,
+    @Headers('origin') origin: string,
   ) {
     return await firstValueFrom(
       this.paymentsMicroservice.send(
@@ -37,9 +37,31 @@ export class PaymentsController {
         },
         {
           commitmentId,
-          origin: req.headers.origin ?? 'https://google.com',
+          origin,
         },
       ),
     );
+  }
+
+  @Post('/process/hosted/:commitmentId')
+  async createHosted(
+    @Param('commitmentId') commitmentId: string,
+    @Res() res: Response,
+  ) {
+    const session_url = await firstValueFrom(
+      this.paymentsMicroservice.send(
+        {
+          cmd: 'createHostedPayment',
+        },
+        {
+          commitmentId,
+          origin: 'https://example.com',
+        },
+      ),
+    );
+
+    return res.json({
+      url: session_url,
+    });
   }
 }

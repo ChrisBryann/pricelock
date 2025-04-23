@@ -12,6 +12,7 @@ import { ProductsService } from './products/products.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { LISTING_BMQ } from '@app/common/bullmq/bullmq.constant';
 import { Queue } from 'bullmq';
+import Decimal from 'decimal.js';
 
 @Injectable()
 export class ListingsService {
@@ -254,7 +255,11 @@ export class ListingsService {
         .getRepository(ProductListing)
         .createQueryBuilder('product_listing')
         .setLock('pessimistic_write')
-        .select(['product_listing.id', 'product_listing.locked']) // Only select what you need
+        .select([
+          'product_listing.id',
+          'product_listing.proposedPrice',
+          'product_listing.finalPrice',
+        ]) // Only select what you need
         .where('product_listing.id = :id', { id })
         .getOne();
 
@@ -263,10 +268,10 @@ export class ListingsService {
       }
 
       // set final price
-      listing.finalPrice =
-        Math.round(
-          listing.proposedPrice * (minThreshold / totalCommitments) * 100,
-        ) / 100;
+      listing.finalPrice = listing.proposedPrice
+        .times((minThreshold / totalCommitments) * 100)
+        .round()
+        .div(100);
 
       await manager.getRepository(ProductListing).save(listing);
     });

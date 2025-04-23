@@ -1,15 +1,10 @@
 import { UserRoles } from '@app/common';
 import { DefaultEntity } from '@app/common/database/default.entity';
-import {
-  Column,
-  Entity,
-  Index,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity()
 @Index(['phone', 'email', 'id'], { unique: true })
-export class User extends DefaultEntity{
+export class User extends DefaultEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -62,7 +57,19 @@ export class User extends DefaultEntity{
     nullable: true,
   })
   refreshToken?: string;
-}
 
+  // Stripe Connect Account ID to collect payments (buyer) or accepting payouts (seller)
+  @Column({
+    type: 'varchar',
+    unique: true,
+  })
+  stripeConnectAccountId: string;
+
+  @Column({
+    type: 'boolean',
+    default: false,
+  })
+  stripeConnectAccountLinked?: boolean;
+}
 
 export type PublicUser = Omit<User, 'password'>;

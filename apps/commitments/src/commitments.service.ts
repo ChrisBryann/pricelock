@@ -101,6 +101,7 @@ export class CommitmentsService {
       // Join seller, but don't use leftJoinAndSelect for seller so we can limit its fields
       .leftJoin('product.seller', 'seller')
       .addSelect('seller.id')
+      .addSelect('seller.stripeConnectAccountId')
       .where('commitment.id = :id', { id }) // need to use different param names (cannot have two :id) according to docs
       // https://typeorm.io/select-query-builder#important-note-when-using-the-querybuilder
       .getOne();
@@ -163,6 +164,7 @@ export class CommitmentsService {
       // Join seller, but don't use leftJoinAndSelect for seller so we can limit its fields
       .leftJoin('product.seller', 'seller')
       .addSelect('seller.id')
+      .addSelect('seller.stripeConnectAccountId')
       .where('listing.id = :id', { id: listingId })
       .andWhere('seller.id = :sid', { sid: sellerId }) // need to use different param names (cannot have two :id) according to docs
       // https://typeorm.io/select-query-builder#important-note-when-using-the-querybuilder
@@ -270,13 +272,14 @@ export class CommitmentsService {
     const commitment = await manager
       .getRepository(Commitment)
       .createQueryBuilder('commitment')
-      .leftJoin('commitment.buyer', 'buyer')
+      .innerJoin('commitment.buyer', 'buyer')
       .addSelect('buyer.id')
-      .leftJoinAndSelect('commitment.listing', 'listing')
-      .leftJoinAndSelect('listing.product', 'product')
+      .innerJoinAndSelect('commitment.listing', 'listing')
+      .innerJoinAndSelect('listing.product', 'product')
       // Join seller, but don't use leftJoinAndSelect for seller so we can limit its fields
-      .leftJoin('product.seller', 'seller')
+      .innerJoin('product.seller', 'seller')
       .addSelect('seller.id')
+      .addSelect('seller.stripeConnectAccountId')
       .where('commitment.id = :id', { id }) // need to use different param names (cannot have two :id) according to docs
       // https://typeorm.io/select-query-builder#important-note-when-using-the-querybuilder
       .setLock('pessimistic_write')

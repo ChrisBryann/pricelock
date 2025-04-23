@@ -6,6 +6,7 @@ import {
   Inject,
   Param,
   Patch,
+  Post,
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUserDecorator } from 'apps/auth/src/decorators/current-user.decorator';
@@ -15,6 +16,7 @@ import { UpdateUserDto } from 'apps/users/src/dtos/update-user.dto';
 import { USERS_MICROSERVICE } from '../gateway.constant';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
+import { LinkUserToStripeDto } from 'apps/users/src/dtos/link-user-to-stripe.dto';
 
 @UseGuards(AuthGatewayGuard)
 @Controller('users')
@@ -121,6 +123,22 @@ export class UsersController {
         defaultValue: null, // since deleteUserById tcp route doesn't return anything when successful, firstValueFrom rejects and throws error because nothing is returned
         // therefore, set defaultValue to null so that it returns nothing to user and gives 201 OK
       },
+    );
+  }
+
+  @Post('/link/stripe/:userId')
+  async linkUserToStripeAccount(
+    @Param('userId') userId: string,
+    @Body() linkUserToStripeDto: LinkUserToStripeDto,
+  ): Promise<{ url: string }> {
+    return await firstValueFrom(
+      this.usersMicroservice.send(
+        { cmd: 'linkUserToStripeAccount' },
+        {
+          id: userId,
+          linkUserToStripeDto,
+        },
+      ),
     );
   }
 }

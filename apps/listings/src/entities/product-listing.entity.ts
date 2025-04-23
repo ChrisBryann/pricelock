@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 import { Product } from '../products/entities/product.entity';
 import { DefaultEntity } from '@app/common/database/default.entity';
+import Decimal from 'decimal.js';
 
 @Entity()
 export class ProductListing extends DefaultEntity {
@@ -24,8 +25,14 @@ export class ProductListing extends DefaultEntity {
     type: 'decimal',
     precision: 10,
     scale: 2,
+    transformer: {
+      // PostgreSQL returns int as string, so turn it to a Decimal object
+      to: (value: number | Decimal) =>
+        typeof value === 'number' ? value : value.toString(),
+      from: (value: string) => new Decimal(value),
+    },
   })
-  proposedPrice: number;
+  proposedPrice: Decimal;
 
   @Column({
     type: 'int',
@@ -49,9 +56,17 @@ export class ProductListing extends DefaultEntity {
     type: 'decimal',
     precision: 10,
     scale: 2,
+    transformer: {
+      // PostgreSQL returns int as string, so turn it to a Decimal object
+      to: (value: number | Decimal | null | undefined) => {
+        if (value === null || value === undefined) return null;
+        return value instanceof Decimal ? value.toString() : value;
+      },
+      from: (value: string | null) => (value ? new Decimal(value) : null),
+    },
     nullable: true,
   })
-  finalPrice?: number;
+  finalPrice?: Decimal;
 
   @Column({
     type: 'boolean',

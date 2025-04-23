@@ -47,7 +47,6 @@ export class ListingConsumer extends WorkerHost {
             aggregatedCommitmentData.minThreshold,
           );
           // 2. send out a notify job event to notify users to buy product within 24 hours
-          
         } else {
           // mark this listing as expired
           await this.listingsService.closeExpiredListing(listingId);

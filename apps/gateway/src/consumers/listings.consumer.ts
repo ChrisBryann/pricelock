@@ -141,10 +141,15 @@ export class ListingsConsumer extends WorkerHost {
           // in frontend, user will see this notification, and frontend code will request user to complete order which will call our payments microservice to complete purchase and create order
         } else {
           // mark this listing as expired
-          await this.listingsMicroservice.send(
-            { cmd: 'closeExpiredListing' },
+          await firstValueFrom(
+            this.listingsMicroservice.send(
+              { cmd: 'closeExpiredListing' },
+              {
+                id: listingId,
+              },
+            ),
             {
-              id: listingId,
+              defaultValue: null,
             },
           );
         }

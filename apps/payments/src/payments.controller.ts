@@ -17,4 +17,12 @@ export class PaymentsController {
   ) {
     return await this.paymentsService.createPayment(commitmentId, origin);
   }
+  // to test Stripe Payments, we will use hosted page for now
+  @MessagePattern({ cmd: 'createHostedPayment' })
+  async createHosted(
+    @Payload('commitmentId') commitmentId: string,
+    @Payload('origin') origin: string,
+  ) {
+    return await this.paymentsService.createHostedPayment(commitmentId, origin);
+  }
 }
