@@ -5,7 +5,7 @@ import { ClientProxy } from '@nestjs/microservices';
 import { RegisterUserDto } from 'apps/auth/src/dtos/register-user.dto';
 import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
-import { AUTH_MICROSERVICE } from '../gateway.constant';
+import { AUTH_MICROSERVICE } from '../../../../libs/common/src/constants/gateway.constant';
 
 @Controller('auth')
 export class AuthController {

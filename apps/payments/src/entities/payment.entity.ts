@@ -55,5 +55,10 @@ export class Payment extends DefaultEntity {
     unique: true,
     nullable: true,
   })
-  stripePaymentIntentId: string; // stripe's paymentIntent
+  stripePaymentIntentId?: string; // stripe's paymentIntent
+
+  @Column({
+    nullable: false, // every Payment must have a Commitment related to it
+  }) // HAS relationship 1-to=N
+  commitmentId: string;
 }

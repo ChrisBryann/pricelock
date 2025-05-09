@@ -2,7 +2,7 @@ import { ORDERS_BMQ } from '@app/common/bullmq/bullmq.constant';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { ORDERS_MICROSERVICE } from '../gateway.constant';
+import { ORDERS_MICROSERVICE } from '../../../../libs/common/src/constants/gateway.constant';
 import { ClientProxy } from '@nestjs/microservices';
 import { CreateOrderDto } from 'apps/orders/src/dto/create-order.dto';
 import { firstValueFrom } from 'rxjs';

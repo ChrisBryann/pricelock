@@ -11,7 +11,7 @@ UNITED STATES           -> Country name
 
 */
 export const formatStripeAddress = (address: Stripe.Address) => {
-  const firstLine = `${address.line1} ${address.line2}`;
+  const firstLine = `${address.line1}${address.line2 ? ` ${address.line2}` : ''}`;
   const secondLine = `${address.city} ${address.state} ${address.postal_code}`;
   const thirdLine = `${address.country}`;
 

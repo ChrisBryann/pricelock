@@ -25,23 +25,26 @@ export class OrdersService {
 
   async create(createOrderDto: CreateOrderDto, manager?: EntityManager) {
     // create orders based off the commitment id
-
     const repo = manager ? manager.getRepository(Order) : this.ordersRepository;
-
-    const order = await this.findOneByCommitment(
-      createOrderDto.commitmentId,
-      manager,
-    );
-    // if an order with the given commitment Id exists already, then throw error
-    if (order) {
+    try {
+      await this.findOneByCommitment(createOrderDto.commitmentId, manager);
+      // if an order with the given commitment Id exists already, then throw error
       throw new ForbiddenException(
         'Order with the given commitment ID already exist!',
       );
-    }
+    } catch {}
 
-    const orders = await repo.create(createOrderDto);
+    const order = await repo.create({
+      ...createOrderDto,
+      commitment: {
+        id: createOrderDto.commitmentId,
+      },
+      buyer: {
+        id: createOrderDto.buyerId,
+      },
+    });
 
-    return await repo.save(orders);
+    return await repo.save(order);
   }
 
   async createBulk(createOrderDtos: CreateOrderDto[]) {

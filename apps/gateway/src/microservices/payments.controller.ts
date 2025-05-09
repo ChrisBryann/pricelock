@@ -8,7 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { PAYMENTS_MICROSERVICE } from '../gateway.constant';
+import { PAYMENTS_MICROSERVICE } from '../../../../libs/common/src/constants/gateway.constant';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { AuthGatewayGuard } from '@app/common/auth-gateway/auth-gateway.guard';

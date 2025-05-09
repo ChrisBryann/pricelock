@@ -10,9 +10,9 @@ import {
   Inject,
 } from '@nestjs/common';
 import { AuthGatewayGuard } from '@app/common/auth-gateway/auth-gateway.guard';
-import { CurrentUserDecorator } from 'apps/auth/src/decorators/current-user.decorator';
+import { CurrentUserDecorator } from '@app/common/decorators/current-user.decorator';
 import { PublicUser } from 'apps/users/src/entities/user.entity';
-import { LISTINGS_MICROSERVICE } from '../gateway.constant';
+import { LISTINGS_MICROSERVICE } from '../../../../libs/common/src/constants/gateway.constant';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { CreateProductDto } from 'apps/listings/src/products/dto/create-product.dto';

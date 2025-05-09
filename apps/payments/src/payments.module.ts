@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { OrdersModule } from 'apps/orders/src/orders.module';
-import { CommitmentsService } from 'apps/commitments/src/commitments.service';
 import { CommitmentsModule } from 'apps/commitments/src/commitments.module';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from '@app/common/database/database.module';

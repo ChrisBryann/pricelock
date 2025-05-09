@@ -4,7 +4,7 @@ import { RegisterUserDto } from './dtos/register-user.dto';
 import { JwtAuthGuard } from './guards/jwt.guard';
 import { LocalAuthGuard } from './guards/local.guard';
 import { PublicUser } from 'apps/users/src/entities/user.entity';
-import { CurrentUserDecorator } from './decorators/current-user.decorator';
+import { CurrentUserDecorator } from '../../../libs/common/src/decorators/current-user.decorator';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 
 @Controller('auth')

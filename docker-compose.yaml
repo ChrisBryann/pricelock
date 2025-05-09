@@ -137,6 +137,25 @@ services:
       - pgadmin
       - rabbitmq
       - bullmq
+  webhook:
+    build:
+      context: .
+      dockerfile: ./apps/webhook/Dockerfile
+      target: development
+    container_name: webhook
+    command: npm run start:dev webhook
+    env_file:
+      - ./apps/webhook/.env.development
+    ports:
+      - 3108:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - db
+      - pgadmin
+      - rabbitmq
+      - bullmq
   db:
     image: postgres:latest
     container_name: db

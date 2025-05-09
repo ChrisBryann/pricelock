@@ -12,7 +12,7 @@ import {
   ORDERS_MICROSERVICE,
   PAYMENTS_MICROSERVICE,
   USERS_MICROSERVICE,
-} from './gateway.constant';
+} from '../../../libs/common/src/constants/gateway.constant';
 import { AuthGatewayModule } from '@app/common/auth-gateway/auth-gateway.module';
 import {
   CommitmentsController,

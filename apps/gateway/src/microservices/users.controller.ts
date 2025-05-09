@@ -9,11 +9,11 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { CurrentUserDecorator } from 'apps/auth/src/decorators/current-user.decorator';
+import { CurrentUserDecorator } from '@app/common/decorators/current-user.decorator';
 import { AuthGatewayGuard } from '@app/common/auth-gateway/auth-gateway.guard';
 import { PublicUser, User } from 'apps/users/src/entities/user.entity';
 import { UpdateUserDto } from 'apps/users/src/dtos/update-user.dto';
-import { USERS_MICROSERVICE } from '../gateway.constant';
+import { USERS_MICROSERVICE } from '../../../../libs/common/src/constants/gateway.constant';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { LinkUserToStripeDto } from 'apps/users/src/dtos/link-user-to-stripe.dto';
@@ -126,16 +126,16 @@ export class UsersController {
     );
   }
 
-  @Post('/link/stripe/:userId')
+  @Post('/link/stripe')
   async linkUserToStripeAccount(
-    @Param('userId') userId: string,
+    @CurrentUserDecorator() user: PublicUser,
     @Body() linkUserToStripeDto: LinkUserToStripeDto,
   ): Promise<{ url: string }> {
     return await firstValueFrom(
       this.usersMicroservice.send(
         { cmd: 'linkUserToStripeAccount' },
         {
-          id: userId,
+          id: user.id,
           linkUserToStripeDto,
         },
       ),

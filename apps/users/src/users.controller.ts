@@ -59,10 +59,22 @@ export class UsersController {
     @Payload('id') id: string,
     @Payload('linkUserToStripeDto') linkUserToStripeDto: LinkUserToStripeDto,
     // combine stripeConnectAccountId, refresh and return url payload into one DTO
-  ): Promise<void> {
+  ): Promise<{ url: string }> {
     return await this.usersService.linkUserToStripeAccount(
       id,
       linkUserToStripeDto,
+    );
+  }
+
+  @MessagePattern({ cmd: 'updateUserStripeAccount' })
+  async updateUserStripeAccount(
+    @Payload('stripeAccountId') stripeAccountId: string,
+    @Payload('stripeConnectAccountLinked') stripeConnectAccountLinked: boolean,
+  ) {
+    // if user is linked with stripe, update it's boolean property to true
+    await this.usersService.updateUserStripeAccount(
+      stripeAccountId,
+      stripeConnectAccountLinked,
     );
   }
 }

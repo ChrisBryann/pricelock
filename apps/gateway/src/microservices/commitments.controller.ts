@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthGatewayGuard } from '@app/common/auth-gateway/auth-gateway.guard';
-import { CurrentUserDecorator } from 'apps/auth/src/decorators/current-user.decorator';
+import { CurrentUserDecorator } from '@app/common/decorators/current-user.decorator';
 import { PublicUser } from 'apps/users/src/entities/user.entity';
 import { CreateCommitmentDto } from 'apps/commitments/src/dto/create-commitment.dto';
 import { ClientProxy } from '@nestjs/microservices';

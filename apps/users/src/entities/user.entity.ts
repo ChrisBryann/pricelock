@@ -62,8 +62,9 @@ export class User extends DefaultEntity {
   @Column({
     type: 'varchar',
     unique: true,
+    nullable: true,
   })
-  stripeConnectAccountId: string;
+  stripeConnectAccountId?: string;
 
   @Column({
     type: 'boolean',

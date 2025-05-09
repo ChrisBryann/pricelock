@@ -18,10 +18,10 @@ export class UsersService {
   constructor(
     @InjectRepository(User) private readonly usersRepository: Repository<User>,
     private readonly cryptoService: CryptoService,
-    private readonly ConfigService: ConfigService,
+    private readonly configService: ConfigService,
   ) {
     this.stripe = new Stripe(
-      this.ConfigService.getOrThrow<string>('STRIPE_SECRET_KEY'),
+      this.configService.getOrThrow<string>('STRIPE_SECRET_KEY'),
     );
   }
 
@@ -128,5 +128,20 @@ export class UsersService {
     });
 
     return { url: accountLink.url };
+  }
+  async updateUserStripeAccount(
+    stripeConnectAccountId: string,
+    stripeConnectAccountLinked: boolean,
+  ): Promise<void> {
+    // update user's stripe connect account linked boolean property when
+    // user has linked their stripe connect account (true) or not (false)
+    await this.usersRepository.update(
+      {
+        stripeConnectAccountId,
+      },
+      {
+        stripeConnectAccountLinked,
+      },
+    );
   }
 }

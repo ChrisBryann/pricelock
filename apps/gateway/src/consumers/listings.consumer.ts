@@ -12,7 +12,7 @@ import {
   LISTINGS_MICROSERVICE,
   NOTIFICATIONS_MICROSERVICE,
   ORDERS_MICROSERVICE,
-} from '../gateway.constant';
+} from '../../../../libs/common/src/constants/gateway.constant';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { Commitment } from 'apps/commitments/src/entities/commitment.entity';
