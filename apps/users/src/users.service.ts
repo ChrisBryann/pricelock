@@ -28,7 +28,7 @@ export class UsersService {
   async createUser(registerUserDto: RegisterUserDto): Promise<PublicUser> {
     try {
       await this.getUserByEmail(registerUserDto.email);
-    } catch (error) {
+    } catch {
       return await this.usersRepository.manager.transaction(async (manager) => {
         // create a Stripe Connect Account
         const stripeUser = await this.stripe.accounts.create({

@@ -16,14 +16,14 @@ export class Order extends DefaultEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne((type) => Commitment, {
+  @ManyToOne(() => Commitment, {
     onDelete: 'CASCADE',
     nullable: false,
   })
   @JoinColumn()
   commitment: Commitment; // each order is tied to a commitment request
 
-  @ManyToOne((type) => User, {
+  @ManyToOne(() => User, {
     onDelete: 'CASCADE',
     nullable: false,
   })

@@ -36,6 +36,7 @@ export class ListingsConsumer extends WorkerHost {
   }
 
   async process(job: Job, token?: string): Promise<any> {
+    void token;
     switch (job.name) {
       case 'closeListing':
         // find out if this listing totalCommitment >= minThreshold

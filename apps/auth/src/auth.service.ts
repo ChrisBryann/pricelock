@@ -3,7 +3,6 @@ import { PublicUser, User } from 'apps/users/src/entities/user.entity';
 import { UsersService } from 'apps/users/src/users.service';
 import { RegisterUserDto } from './dtos/register-user.dto';
 import { CryptoService } from '@app/common/crypto/crypto.service';
-import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { UserPayload } from './interfaces/user-payload.interface';
 import { JwtService } from '@nestjs/jwt';

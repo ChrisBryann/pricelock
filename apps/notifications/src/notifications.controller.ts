@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { NotificationType } from '@app/common';

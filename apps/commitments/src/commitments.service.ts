@@ -69,42 +69,30 @@ export class CommitmentsService {
     );
   }
 
-  async findOne(id: string, manager?: EntityManager) {
-    // return await this.commitmentRepository.findOne({
-    //   where: {
-    //     id,
-    //   },
-    //   select: {
-    //     buyer: {
-    //       id: true,
-    //     },
-    //     listing: {
-    //       product: {
-    //         seller: {
-    //           id: true,
-    //         },
-    //       },
-    //     },
-    //   },
-    // });
-    if (manager) {
-      return this.findOneWithLock(manager, id);
-    }
+  async findOne(id: string, manager?: EntityManager, lock: boolean = false) {
+    const repo = manager
+      ? manager.getRepository(Commitment)
+      : this.commitmentRepository;
 
-    const commitment = await this.commitmentRepository
+    let query = repo
       .createQueryBuilder('commitment')
-      .leftJoin('commitment.buyer', 'buyer')
+      .innerJoin('commitment.buyer', 'buyer')
       .addSelect('buyer.id')
       .addSelect('buyer.email')
-      .leftJoinAndSelect('commitment.listing', 'listing')
-      .leftJoinAndSelect('listing.product', 'product')
-      // Join seller, but don't use leftJoinAndSelect for seller so we can limit its fields
-      .leftJoin('product.seller', 'seller')
+      .innerJoinAndSelect('commitment.listing', 'listing')
+      .innerJoinAndSelect('listing.product', 'product')
+      // Join seller, but don't use innerJoinAndSelect for seller so we can limit its fields
+      .innerJoin('product.seller', 'seller')
       .addSelect('seller.id')
       .addSelect('seller.stripeConnectAccountId')
-      .where('commitment.id = :id', { id }) // need to use different param names (cannot have two :id) according to docs
-      // https://typeorm.io/select-query-builder#important-note-when-using-the-querybuilder
-      .getOne();
+      .where('commitment.id = :id', { id }); // need to use different param names (cannot have two :id) according to docs
+    // https://typeorm.io/select-query-builder#important-note-when-using-the-querybuilder
+
+    if (lock) {
+      query = query.setLock('pessimistic_write');
+    }
+
+    const commitment = await query.getOne();
 
     if (!commitment) {
       throw new NotFoundException('Commitment does not exist!');
@@ -116,59 +104,32 @@ export class CommitmentsService {
     sellerId: string,
     listingId: string,
     manager?: EntityManager,
+    lock: boolean = false,
   ) {
-    // find all commitments that are tied to the seller's listing
-    // return await this.commitmentRepository.find({
-    //   where: {
-    //     listing: {
-    //       id: listingId,
-    //       product: {
-    //         seller: {
-    //           id: sellerId,
-    //         },
-    //       },
-    //     },
-    //   },
-    //   select: {
-    //     buyer: {
-    //       id: true,
-    //     },
-    //     listing: includeListing && {
-    //       id: true,
-    //       product: {
-    //         seller: {
-    //           id: true,
-    //         },
-    //       },
-    //     },
-    //   },
-    //   relations: {
-    //     buyer: true,
-    //     listing: true,
-    //   },
-    // });
-
     const repo = manager
-      ? manager
-          .getRepository(Commitment)
-          .createQueryBuilder('commitment')
-          .setLock('pessimistic_write')
-      : this.commitmentRepository.createQueryBuilder('commitment');
+      ? manager.getRepository(Commitment)
+      : this.commitmentRepository;
 
-    return await repo
-      .leftJoin('commitment.buyer', 'buyer')
+    let query = repo
+      .createQueryBuilder('commitment')
+      .innerJoin('commitment.buyer', 'buyer')
       .addSelect('buyer.id')
       .addSelect('buyer.email')
-      .leftJoinAndSelect('commitment.listing', 'listing')
-      .leftJoinAndSelect('listing.product', 'product')
-      // Join seller, but don't use leftJoinAndSelect for seller so we can limit its fields
-      .leftJoin('product.seller', 'seller')
+      .innerJoinAndSelect('commitment.listing', 'listing')
+      .innerJoinAndSelect('listing.product', 'product')
+      // Join seller, but don't use innerJoinAndSelect for seller so we can limit its fields
+      .innerJoin('product.seller', 'seller')
       .addSelect('seller.id')
       .addSelect('seller.stripeConnectAccountId')
       .where('listing.id = :id', { id: listingId })
-      .andWhere('seller.id = :sid', { sid: sellerId }) // need to use different param names (cannot have two :id) according to docs
-      // https://typeorm.io/select-query-builder#important-note-when-using-the-querybuilder
-      .getMany();
+      .andWhere('seller.id = :sid', { sid: sellerId }); // need to use different param names (cannot have two :id) according to docs
+    // https://typeorm.io/select-query-builder#important-note-when-using-the-querybuilder
+
+    if (lock) {
+      query = query.setLock('pessimistic_write');
+    }
+
+    return await query.getMany();
   }
 
   async getAggregatedDataByListingId(
@@ -181,6 +142,7 @@ export class CommitmentsService {
       sellerId,
       listingId,
       manager,
+      true,
     );
     return {
       totalCommitments: commitments.length,
@@ -198,7 +160,7 @@ export class CommitmentsService {
     quantity: number,
     manager: EntityManager,
   ) {
-    const commitment = await this.findOne(id, manager);
+    const commitment = await this.findOne(id, manager, true);
 
     commitment.quantity = quantity;
     return manager.getRepository(Commitment).save(commitment);
@@ -224,7 +186,7 @@ export class CommitmentsService {
     id: string,
     manager: EntityManager,
   ) {
-    const commitment = await this.findOne(id, manager);
+    const commitment = await this.findOne(id, manager, true);
 
     if (commitment.buyer.id !== buyerId) {
       throw new ForbiddenException(
@@ -263,32 +225,5 @@ export class CommitmentsService {
         },
       );
     });
-  }
-
-  private async findOneWithLock(
-    manager: EntityManager,
-    id: string,
-  ): Promise<Commitment> {
-    const commitment = await manager
-      .getRepository(Commitment)
-      .createQueryBuilder('commitment')
-      .innerJoin('commitment.buyer', 'buyer')
-      .addSelect('buyer.id')
-      .innerJoinAndSelect('commitment.listing', 'listing')
-      .innerJoinAndSelect('listing.product', 'product')
-      // Join seller, but don't use leftJoinAndSelect for seller so we can limit its fields
-      .innerJoin('product.seller', 'seller')
-      .addSelect('seller.id')
-      .addSelect('seller.stripeConnectAccountId')
-      .where('commitment.id = :id', { id }) // need to use different param names (cannot have two :id) according to docs
-      // https://typeorm.io/select-query-builder#important-note-when-using-the-querybuilder
-      .setLock('pessimistic_write')
-      .getOne();
-
-    if (!commitment) {
-      throw new NotFoundException('Commitment does not exist!');
-    }
-
-    return commitment;
   }
 }

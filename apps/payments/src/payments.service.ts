@@ -3,7 +3,6 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -49,7 +48,7 @@ export class PaymentsService {
     }
   }
 
-  private async getPaymentBySessionId(
+  private async findOneBySessionId(
     sessionId: string,
     manager?: EntityManager,
     lock: boolean = false,
@@ -77,7 +76,7 @@ export class PaymentsService {
     return payment;
   }
 
-  private async getPaymentByCommitmentId(
+  private async findOneByCommitmentId(
     commitmentId: string,
     manager?: EntityManager,
     lock: boolean = false,
@@ -105,7 +104,7 @@ export class PaymentsService {
     return payment;
   }
 
-  private async getOpenPaymentByCommitmentId(
+  private async findOneOpenPaymentByCommitmentId(
     commitmentId: string,
     manager?: EntityManager,
     lock: boolean = false,
@@ -142,7 +141,7 @@ export class PaymentsService {
     manager?: EntityManager,
   ) {
     if (manager) {
-      await this.getPaymentBySessionId(sessionId, manager, true);
+      await this.findOneBySessionId(sessionId, manager, true);
 
       await manager.getRepository(Payment).update(
         {
@@ -151,12 +150,12 @@ export class PaymentsService {
         updatePaymentData,
       );
 
-      return await this.getPaymentBySessionId(sessionId, manager, true);
+      return await this.findOneBySessionId(sessionId, manager, true);
     }
 
     return await this.paymentsRepository.manager.transaction(
       async (manager) => {
-        await this.getPaymentBySessionId(sessionId, manager, true);
+        await this.findOneBySessionId(sessionId, manager, true);
 
         await manager.getRepository(Payment).update(
           {
@@ -165,7 +164,7 @@ export class PaymentsService {
           updatePaymentData,
         );
 
-        return await this.getPaymentBySessionId(sessionId, manager, true);
+        return await this.findOneBySessionId(sessionId, manager, true);
       },
     );
   }
@@ -198,7 +197,7 @@ export class PaymentsService {
       );
 
       try {
-        const payment = await this.getOpenPaymentByCommitmentId(
+        const payment = await this.findOneOpenPaymentByCommitmentId(
           commitmentId,
           manager,
           true,
@@ -335,7 +334,7 @@ export class PaymentsService {
       );
 
       try {
-        const payment = await this.getOpenPaymentByCommitmentId(
+        const payment = await this.findOneOpenPaymentByCommitmentId(
           commitmentId,
           manager,
           true,

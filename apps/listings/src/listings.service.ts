@@ -12,7 +12,6 @@ import { ProductsService } from './products/products.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { LISTING_BMQ } from '@app/common/bullmq/bullmq.constant';
 import { Queue } from 'bullmq';
-import Decimal from 'decimal.js';
 
 @Injectable()
 export class ListingsService {
@@ -27,11 +26,12 @@ export class ListingsService {
     return await this.productListingRepository.manager.transaction(
       async (manager) => {
         try {
-          // TODO: use current manager for productService findOneWithLock
+          // TODO: use current manager for productService findOne
           await this.productService.findOne(
             sellerId,
             createListingDto.productId,
             manager,
+            true,
           );
         } catch {
           throw new ForbiddenException(
@@ -68,85 +68,56 @@ export class ListingsService {
     );
   }
 
-  async findAll(sellerId: string) {
-    // return await this.productListingRepository.find({
-    //   where: {
-    //     expired: false,
-    //     product: {
-    //       seller: {
-    //         id: sellerId,
-    //       },
-    //     },
-    //   },
-    //   select: {
-    //     product: {
-    //       id: true,
-    //       seller: {
-    //         id: true,
-    //       },
-    //     },
-    //   },
-    //   relations: {
-    //     product: {
-    //       seller: true,
-    //     },
-    //   },
-    // });
-    return await this.productListingRepository
+  async findAll(
+    sellerId: string,
+    manager?: EntityManager,
+    lock: boolean = false,
+  ) {
+    const repo = manager
+      ? manager.getRepository(ProductListing)
+      : this.productListingRepository;
+
+    let query = repo
       .createQueryBuilder('listing')
-      .leftJoin('listing.product', 'product')
+      .innerJoin('listing.product', 'product')
       .addSelect('product.id')
       .addSelect('product.seller')
-      // Join seller, but don't use leftJoinAndSelect for seller so we can limit its fields
-      .leftJoin('product.seller', 'seller')
+      // Join seller, but don't use innerJoinAndSelect for seller so we can limit its fields
+      .innerJoin('product.seller', 'seller')
       .addSelect('seller.id')
       .where('seller.id = :id', { id: sellerId })
-      .andWhere('listing.expired = :expired', { expired: false })
-      .getMany();
+      .andWhere('listing.expired = :expired', { expired: false });
+
+    if (lock) {
+      query = query.setLock('pessimistic_write');
+    }
+    return await query.getMany();
   }
 
-  async findOne(id: string) {
-    // const listing = await this.productListingRepository.findOne({
-    //   where: {
-    //     id,
-    //     expired: false,
-    //   },
-    //   select: {
-    //     product: {
-    //       id: true,
-    //       seller: {
-    //         id: true,
-    //       },
-    //     },
-    //   },
-    //   relations: {
-    //     product: {
-    //       seller: true,
-    //     },
-    //   },
-    // });
+  async findOne(id: string, manager?: EntityManager, lock: boolean = false) {
+    const repo = manager
+      ? manager.getRepository(ProductListing)
+      : this.productListingRepository;
 
-    const listing = await this.productListingRepository
+    let query = repo
       .createQueryBuilder('listing')
-      .leftJoin('listing.product', 'product')
+      .innerJoin('listing.product', 'product')
       .addSelect('product.id')
       .addSelect('product.seller')
-      // Join seller, but don't use leftJoinAndSelect for seller so we can limit its fields
-      .leftJoin('product.seller', 'seller')
+      // Join seller, but don't use innerJoinAndSelect for seller so we can limit its fields
+      .innerJoin('product.seller', 'seller')
       .addSelect('seller.id')
       .where('listing.id = :id', { id })
-      .andWhere('listing.expired = :expired', { expired: false })
-      .getOne();
+      .andWhere('listing.expired = :expired', { expired: false });
+
+    if (lock) {
+      query = query.setLock('pessimistic_write');
+    }
+    const listing = await query.getOne();
 
     if (!listing) {
       throw new NotFoundException('Product listing does not exist!');
     }
-
-    // if (listing.product.seller.id !== sellerId) {
-    //   throw new ForbiddenException(
-    //     'Product in this listing does not belong to this seller!',
-    //   );
-    // }
 
     return listing;
   }
@@ -157,7 +128,7 @@ export class ListingsService {
     updateListingDto: UpdateListingDto,
   ) {
     await this.productListingRepository.manager.transaction(async (manager) => {
-      await this.findOneWithLock(manager, id);
+      await this.findOne(id, manager, true);
 
       await manager.getRepository(ProductListing).update(
         {
@@ -172,14 +143,13 @@ export class ListingsService {
           }),
         },
       );
-
-      return this.findOne(id);
     });
+    return await this.findOne(id);
   }
 
   async remove(sellerId: string, id: string) {
     await this.productListingRepository.manager.transaction(async (manager) => {
-      const listing = await this.findOneWithLock(manager, id);
+      const listing = await this.findOne(id, manager, true);
 
       if (listing.product.seller.id !== sellerId) {
         throw new ForbiddenException(
@@ -279,30 +249,5 @@ export class ListingsService {
 
   getHello(): string {
     return 'Hello World!';
-  }
-
-  private async findOneWithLock(
-    manager: EntityManager,
-    id: string,
-  ): Promise<ProductListing> {
-    const listing = await manager
-      .getRepository(ProductListing)
-      .createQueryBuilder('listing')
-      .leftJoin('listing.product', 'product')
-      .addSelect('product.id')
-      .addSelect('product.seller')
-      // Join seller, but don't use leftJoinAndSelect for seller so we can limit its fields
-      .leftJoin('product.seller', 'seller')
-      .addSelect('seller.id')
-      .where('listing.id = :id', { id })
-      .andWhere('listing.expired = :expired', { expired: false })
-      .setLock('pessimistic_write')
-      .getOne();
-
-    if (!listing) {
-      throw new NotFoundException('Product listing does not exist!');
-    }
-
-    return listing;
   }
 }

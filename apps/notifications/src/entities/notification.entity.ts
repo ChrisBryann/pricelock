@@ -1,4 +1,4 @@
-import { NotificationStatus, NotificationType } from '@app/common';
+import { NotificationType } from '@app/common';
 import { DefaultEntity } from '@app/common/database/default.entity';
 import { User } from 'apps/users/src/entities/user.entity';
 import {
@@ -14,7 +14,7 @@ export class Notification extends DefaultEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne((type) => User, {
+  @ManyToOne(() => User, {
     onDelete: 'CASCADE',
   })
   @JoinColumn()

@@ -14,14 +14,14 @@ export class Commitment extends DefaultEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne((type) => ProductListing, {
+  @ManyToOne(() => ProductListing, {
     onDelete: 'CASCADE',
     nullable: false,
   })
   @JoinColumn()
   listing: ProductListing;
 
-  @ManyToOne((type) => User, {
+  @ManyToOne(() => User, {
     onDelete: 'CASCADE',
     nullable: false,
   })

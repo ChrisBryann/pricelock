@@ -11,7 +11,9 @@ describe('CommitmentsController', () => {
       providers: [CommitmentsService],
     }).compile();
 
-    commitmentsController = app.get<CommitmentsController>(CommitmentsController);
+    commitmentsController = app.get<CommitmentsController>(
+      CommitmentsController,
+    );
   });
 
   describe('root', () => {

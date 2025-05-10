@@ -27,7 +27,11 @@ export class OrdersService {
     // create orders based off the commitment id
     const repo = manager ? manager.getRepository(Order) : this.ordersRepository;
     try {
-      await this.findOneByCommitment(createOrderDto.commitmentId, manager);
+      await this.findOneByCommtimentId(
+        createOrderDto.commitmentId,
+        manager,
+        true,
+      );
       // if an order with the given commitment Id exists already, then throw error
       throw new ForbiddenException(
         'Order with the given commitment ID already exist!',
@@ -61,15 +65,24 @@ export class OrdersService {
     );
   }
 
-  async findOneByCommitment(commitmentId: string, manager?: EntityManager) {
+  async findOneByCommtimentId(
+    commitmentId: string,
+    manager?: EntityManager,
+    lock: boolean = false,
+  ) {
     const repo = manager ? manager.getRepository(Order) : this.ordersRepository;
 
-    const order = await repo
+    let query = repo
       .createQueryBuilder('order')
       .leftJoin('order.commitment', 'commitment')
       .addSelect('commitment.id')
-      .where('commitment.id = :id', { id: commitmentId })
-      .getOne();
+      .where('commitment.id = :id', { id: commitmentId });
+
+    if (lock) {
+      query = query.setLock('pessimistic_write');
+    }
+
+    const order = await query.getOne();
 
     if (!order) {
       throw new NotFoundException('Order does not exist!');
@@ -78,15 +91,22 @@ export class OrdersService {
     return order;
   }
 
-  async findOne(id: string) {
-    const order = await this.ordersRepository
+  async findOne(id: string, manager?: EntityManager, lock: boolean = false) {
+    const repo = manager ? manager.getRepository(Order) : this.ordersRepository;
+
+    let query = repo
       .createQueryBuilder('order')
       .leftJoin('order.commitment', 'commitment')
       .addSelect('commitment.id')
       .leftJoin('order.buyer', 'buyer')
       .addSelect('buyer.id')
-      .where('order.id = :id', { id })
-      .getOne();
+      .where('order.id = :id', { id });
+
+    if (lock) {
+      query = query.setLock('pessimistic_write');
+    }
+
+    const order = await query.getOne();
 
     if (!order) {
       throw new NotFoundException('Order does not exist!');
@@ -99,7 +119,7 @@ export class OrdersService {
     const repo = manager ? manager.getRepository(Order) : this.ordersRepository;
 
     return await repo.manager.transaction(async (manager) => {
-      const order = await this.findOneWithLock(manager, id);
+      const order = await this.findOne(id, manager, true);
 
       order.status = status;
 
@@ -107,27 +127,5 @@ export class OrdersService {
 
       return order;
     });
-  }
-
-  private async findOneWithLock(
-    manager: EntityManager,
-    id: string,
-  ): Promise<Order> {
-    const order = await manager
-      .getRepository(Order)
-      .createQueryBuilder('order')
-      .leftJoin('order.commitment', 'commitment')
-      .addSelect('commitment.id')
-      .leftJoin('order.buyer', 'buyer')
-      .addSelect('buyer.id')
-      .where('order.id = :id', { id })
-      .setLock('pessimistic_write')
-      .getOne();
-
-    if (!order) {
-      throw new NotFoundException('Order does not exist!');
-    }
-
-    return order;
   }
 }
