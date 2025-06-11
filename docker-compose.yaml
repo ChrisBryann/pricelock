@@ -1,0 +1,200 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: ./apps/gateway/Dockerfile
+      target: development
+    container_name: gateway
+    command: npm run start:dev gateway
+    env_file:
+      - ./apps/gateway/.env.development
+    ports:
+      - 3107:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - orders
+      - commitments
+      - listings
+      - notifications
+      - payments
+      - auth
+  orders:
+    build:
+      context: .
+      dockerfile: ./apps/orders/Dockerfile
+      target: development
+    container_name: orders
+    command: npm run start:dev orders
+    env_file:
+      - ./apps/orders/.env.development
+    ports:
+      - 3106:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - auth
+  commitments:
+    build:
+      context: .
+      dockerfile: ./apps/commitments/Dockerfile
+      target: development
+    container_name: commitments
+    command: npm run start:dev commitments
+    env_file:
+      - ./apps/commitments/.env.development
+    ports:
+      - 3105:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - auth
+  listings:
+    build:
+      context: .
+      dockerfile: ./apps/listings/Dockerfile
+      target: development
+    container_name: listings
+    command: npm run start:dev listings
+    env_file:
+      - ./apps/listings/.env.development
+    ports:
+      - 3104:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - auth
+  payments:
+    build:
+      context: .
+      dockerfile: ./apps/payments/Dockerfile
+      target: development
+    container_name: payments
+    command: npm run start:dev payments
+    env_file:
+      - ./apps/payments/.env.development
+    ports:
+      - 3103:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - auth
+  notifications:
+    build:
+      context: .
+      dockerfile: ./apps/notifications/Dockerfile
+      target: development
+    container_name: notifications
+    command: npm run start:dev notifications
+    env_file:
+      - ./apps/notifications/.env.development
+    ports:
+      - 3102:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - auth
+  auth:
+    build:
+      context: .
+      dockerfile: ./apps/auth/Dockerfile
+      target: development
+    container_name: auth
+    command: npm run start:dev auth
+    env_file:
+      - ./apps/auth/.env.development
+    ports:
+      - 3101:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - users
+  users:
+    build:
+      context: .
+      dockerfile: ./apps/users/Dockerfile
+      target: development
+    container_name: users
+    command: npm run start:dev users
+    env_file:
+      - ./apps/users/.env.development
+    ports:
+      - 3100:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - db
+      - pgadmin
+      - rabbitmq
+      - bullmq
+  webhook:
+    build:
+      context: .
+      dockerfile: ./apps/webhook/Dockerfile
+      target: development
+    container_name: webhook
+    command: npm run start:dev webhook
+    env_file:
+      - ./apps/webhook/.env.development
+    ports:
+      - 3108:3000
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    depends_on:
+      - db
+      - pgadmin
+      - rabbitmq
+      - bullmq
+  db:
+    image: postgres:latest
+    container_name: db
+    restart: always
+    ports:
+      - 5432:5432
+    env_file:
+      - ./.env.db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $$POSTGRES_DB -U $$PGUSER"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./data/init.sql:/docker-entrypoint-initdb.d/init.sql
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    restart: always
+    ports:
+      - 5050:80
+    env_file:
+      - ./.env.db
+    depends_on:
+      - db
+  rabbitmq:
+    image: rabbitmq
+    container_name: rabbitmq
+    ports:
+      - 5672:5672
+  bullmq:
+    image: redis:latest
+    container_name: bullmq
+    ports:
+      - 6780:6379
+  
+volumes:
+  node_modules:
+
+  pgdata:
+    driver: local
