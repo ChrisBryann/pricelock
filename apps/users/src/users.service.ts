@@ -11,6 +11,7 @@ import { RegisterUserDto } from 'apps/auth/src/dtos/register-user.dto';
 import Stripe from 'stripe';
 import { ConfigService } from '@nestjs/config';
 import { LinkUserToStripeDto } from './dtos/link-user-to-stripe.dto';
+import { UserRoles } from '@app/common';
 
 @Injectable()
 export class UsersService {
@@ -30,26 +31,45 @@ export class UsersService {
       await this.getUserByEmail(registerUserDto.email);
     } catch {
       return await this.usersRepository.manager.transaction(async (manager) => {
-        // create a Stripe Connect Account
-        const stripeUser = await this.stripe.accounts.create({
-          controller: {
-            stripe_dashboard: {
-              type: 'express',
+        // create a Stripe Connect Account for sellers
+        const updateStripeUser: Partial<User> = {};
+        if (
+          registerUserDto.role === UserRoles.Seller ||
+          registerUserDto.role === UserRoles.Admin
+        ) {
+          const stripeConnectUser = await this.stripe.accounts.create({
+            controller: {
+              stripe_dashboard: {
+                type: 'express',
+              },
+              fees: {
+                payer: 'application',
+              },
+              losses: {
+                payments: 'application',
+              },
             },
-            fees: {
-              payer: 'application',
-            },
-            losses: {
-              payments: 'application',
-            },
-          },
-        });
+          });
+          updateStripeUser.stripeConnectAccountId = stripeConnectUser.id;
+        }
+        if (
+          registerUserDto.role === UserRoles.Buyer ||
+          registerUserDto.role === UserRoles.Admin
+        ) {
+          const stripeCustomerUser = await this.stripe.customers.create({
+            name: registerUserDto.name,
+            email: registerUserDto.email,
+            phone: registerUserDto.phone,
+          });
+          updateStripeUser.stripeCustomerAccountId = stripeCustomerUser.id;
+        }
+
         const user = await manager.getRepository(User).save({
           ...registerUserDto,
           password: await this.cryptoService.hashPassword(
             registerUserDto.password,
           ),
-          stripeConnectAccountId: stripeUser.id,
+          ...updateStripeUser,
         });
         const { password, ...userWithoutPassword } = user;
         return userWithoutPassword;
@@ -114,7 +134,7 @@ export class UsersService {
     await this.usersRepository.remove(user);
   }
 
-  async linkUserToStripeAccount(
+  async linkUserToStripeConnectAccount(
     userId: string,
     linkUserToStripeDto: LinkUserToStripeDto,
   ): Promise<{
@@ -129,7 +149,7 @@ export class UsersService {
 
     return { url: accountLink.url };
   }
-  async updateUserStripeAccount(
+  async updateUserStripeConnectAccount(
     stripeConnectAccountId: string,
     stripeConnectAccountLinked: boolean,
   ): Promise<void> {

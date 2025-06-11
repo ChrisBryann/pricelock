@@ -7,6 +7,14 @@ import {
 } from '@app/common/constants/gateway.constant';
 import { firstValueFrom } from 'rxjs';
 import Stripe from 'stripe';
+import { InjectRepository } from '@nestjs/typeorm';
+import {
+  ORDERS_OUTBOX_CHANNEL,
+  PAYMENTS_OUTBOX_CHANNEL,
+  PaymentStatus,
+  TransactionalOutbox,
+} from '@app/common';
+import { Repository } from 'typeorm';
 
 @Injectable()
 export class StripeWebhookService {
@@ -14,6 +22,8 @@ export class StripeWebhookService {
 
   private readonly logger: Logger = new Logger(StripeWebhookService.name);
   constructor(
+    @InjectRepository(TransactionalOutbox)
+    private readonly transactionalOutboxRepository: Repository<TransactionalOutbox>,
     @Inject(PAYMENTS_MICROSERVICE)
     private readonly paymentsMicroservice: ClientProxy,
     @Inject(USERS_MICROSERVICE) private readonly usersMicroservice: ClientProxy,
@@ -40,21 +50,49 @@ export class StripeWebhookService {
         case 'checkout.session.completed':
         case 'checkout.session.async_payment_succeeded': {
           const session = event.data.object as Stripe.Checkout.Session;
-
-          // Once payment succeeded, create order object and update payment object
-          await firstValueFrom(
-            this.paymentsMicroservice.send(
-              {
-                cmd: 'handlePaymentSessionSuccess',
-              },
-              {
-                session,
-              },
-            ),
-            {
-              defaultValue: null,
-            },
-          );
+          const action = session.metadata.action;
+          if (action === 'createEntryFeeCheckoutSession') {
+            // update payment row to have status entry_paid and add their entry fee payment intent ID
+            await this.transactionalOutboxRepository.save(
+              this.transactionalOutboxRepository.create({
+                channel: PAYMENTS_OUTBOX_CHANNEL,
+                eventType: 'entryFeeCheckoutSessionSuccess',
+                payload: {
+                  sessionId: session.id,
+                  paymentIntentId: session.payment_intent.toString(),
+                },
+              }),
+            );
+          } else if (action === 'createFinalPaymentCheckoutSession') {
+            // Once payment succeeded, create order object and update payment object
+            await this.transactionalOutboxRepository.save(
+              this.transactionalOutboxRepository.create({
+                channel: ORDERS_OUTBOX_CHANNEL,
+                eventType: 'finalPaymentCheckoutSessionSuccess',
+                payload: {
+                  amount_total: session.amount_total,
+                  shipping_address: session.shipping_details.address,
+                  commitmentId: session.metadata.commitmentId,
+                  buyerId: session.metadata.buyerId,
+                  sessionId: session.id,
+                  paymentIntentId: session.payment_intent.toString(),
+                },
+              }),
+            );
+            //   await firstValueFrom(
+            //     this.paymentsMicroservice.send(
+            //       {
+            //         cmd: 'handlePaymentSessionSuccess',
+            //       },
+            //       {
+            //         session,
+            //       },
+            //     ),
+            //     {
+            //       defaultValue: null,
+            //     },
+            //   );
+          }
 
           // TODO: log / send out notification that payment succeeded
           this.logger.log(
@@ -64,20 +102,30 @@ export class StripeWebhookService {
         }
         case 'checkout.session.expired': {
           const session = event.data.object as Stripe.Checkout.Session;
-
-          await firstValueFrom(
-            this.paymentsMicroservice.send(
-              {
-                cmd: 'handlePaymentSessionFail',
-              },
-              {
-                session,
-              },
-            ),
-            {
-              defaultValue: null,
-            },
-          );
+          const action = session.metadata.action;
+          if (action === 'createEntryFeeCheckoutSession') {
+            await this.transactionalOutboxRepository.save(
+              this.transactionalOutboxRepository.create({
+                channel: PAYMENTS_OUTBOX_CHANNEL,
+                eventType: 'entryFeeCheckoutSessionFail',
+                payload: {
+                  sessionId: session.id,
+                  status: PaymentStatus.EntryExpired,
+                },
+              }),
+            );
+          } else if (action === 'createFinalPaymentCheckoutSession') {
+            await this.transactionalOutboxRepository.save(
+              this.transactionalOutboxRepository.create({
+                channel: PAYMENTS_OUTBOX_CHANNEL,
+                eventType: 'finalPaymentCheckoutSessionFail',
+                payload: {
+                  sessionId: session.id,
+                  status: PaymentStatus.Expired,
+                },
+              }),
+            );
+          }
 
           // TODO: log / send out notification that payment expired
           this.logger.log(
@@ -87,20 +135,30 @@ export class StripeWebhookService {
         }
         case 'checkout.session.async_payment_failed': {
           const session = event.data.object as Stripe.Checkout.Session;
-
-          await firstValueFrom(
-            this.paymentsMicroservice.send(
-              {
-                cmd: 'handlePaymentSessionFail',
-              },
-              {
-                session,
-              },
-            ),
-            {
-              defaultValue: null,
-            },
-          );
+          const action = session.metadata.action;
+          if (action === 'createEntryFeeCheckoutSession') {
+            await this.transactionalOutboxRepository.save(
+              this.transactionalOutboxRepository.create({
+                channel: PAYMENTS_OUTBOX_CHANNEL,
+                eventType: 'entryFeeCheckoutSessionFail',
+                payload: {
+                  sessionId: session.id,
+                  status: PaymentStatus.EntryFailed,
+                },
+              }),
+            );
+          } else if (action === 'createFinalPaymentCheckoutSession') {
+            await this.transactionalOutboxRepository.save(
+              this.transactionalOutboxRepository.create({
+                channel: PAYMENTS_OUTBOX_CHANNEL,
+                eventType: 'finalPaymentCheckoutSessionFail',
+                payload: {
+                  sessionId: session.id,
+                  status: PaymentStatus.Failed,
+                },
+              }),
+            );
+          }
 
           // TODO: log / send out notification that payment expired
           // TODO: send out email for async payments that it has failed
@@ -132,7 +190,7 @@ export class StripeWebhookService {
           const account = event.data.object;
           await firstValueFrom(
             this.usersMicroservice.send(
-              { cmd: 'updateUserStripeAccount' },
+              { cmd: 'updateUserStripeConnectAccount' },
               {
                 stripeAccountId: account.id,
                 stripeConnectAccountLinked:
@@ -169,54 +227,6 @@ export class StripeWebhookService {
     } catch (error) {
       this.logger.error(
         `ERROR - Stripe webhook for Accounts: ${error.message}`,
-      );
-    }
-  }
-
-  async handlePaymentIntentWebhook(body: Buffer, signature: string) {
-    try {
-      const event = this.stripe.webhooks.constructEvent(
-        body,
-        signature,
-        this.configService.getOrThrow<string>('STRIPE_WEBHOOK_SECRET'),
-      );
-
-      switch (event.type) {
-        case 'payment_intent.payment_failed': {
-          // customer didn't complete checkout flow
-          // expire the payment row
-          const paymentIntent = event.data.object;
-
-          await firstValueFrom(
-            this.paymentsMicroservice.send(
-              {
-                cmd: 'handlePaymentIntentFail',
-              },
-              {
-                paymentIntentId: paymentIntent.id,
-              },
-            ),
-            {
-              defaultValue: null,
-            },
-          );
-
-          this.logger.log(
-            `Stripe Payment Intent - ${event.type} for ID: ${paymentIntent.id}`,
-          );
-
-          break;
-        }
-        case 'payment_intent.succeeded': {
-          this.logger.log(`Stripe Payment Intent - ${event.type} for ID: ${1}`);
-          break;
-        }
-        default:
-          break;
-      }
-    } catch (error) {
-      this.logger.error(
-        `ERROR - Stripe webhook for Payment Intent: ${error.message}`,
       );
     }
   }

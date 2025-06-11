@@ -12,6 +12,12 @@ import { ProductsService } from './products/products.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { LISTING_BMQ } from '@app/common/bullmq/bullmq.constant';
 import { Queue } from 'bullmq';
+import {
+  calculateEntryFee,
+  calculateFinalPrice,
+  calculateMaxDiscount,
+} from '@app/common';
+import Decimal from 'decimal.js';
 
 @Injectable()
 export class ListingsService {
@@ -38,6 +44,11 @@ export class ListingsService {
             'Product in this listing does not belong to this seller!',
           );
         }
+        const price = new Decimal(createListingDto.proposedPrice);
+        // get the entry fee based off the max discount this item can get and 5% platform fee
+        const maxDiscount = calculateMaxDiscount(price);
+
+        const entryFee = calculateEntryFee(price, maxDiscount);
 
         const tempListing = manager.getRepository(ProductListing).create({
           ...createListingDto,
@@ -45,6 +56,8 @@ export class ListingsService {
           product: {
             id: createListingDto.productId,
           },
+          entryFee,
+          discount: maxDiscount,
         });
         const listing = await manager
           .getRepository(ProductListing)
@@ -80,15 +93,16 @@ export class ListingsService {
     let query = repo
       .createQueryBuilder('listing')
       .innerJoin('listing.product', 'product')
-      .addSelect('product.id')
+      .addSelect(['product.id', 'product.title'])
       .addSelect('product.seller')
       // Join seller, but don't use innerJoinAndSelect for seller so we can limit its fields
       .innerJoin('product.seller', 'seller')
-      .addSelect('seller.id')
+      .addSelect(['seller.id', 'seller.stripeConnectAccountId'])
       .where('seller.id = :id', { id: sellerId })
-      .andWhere('listing.expired = :expired', { expired: false });
+      .andWhere('listing.expired = :expired', { expired: false })
+      .andWhere('listing.locked = :locked', { locked: false });
 
-    if (lock) {
+    if (lock && !!manager) {
       query = query.setLock('pessimistic_write');
     }
     return await query.getMany();
@@ -102,15 +116,16 @@ export class ListingsService {
     let query = repo
       .createQueryBuilder('listing')
       .innerJoin('listing.product', 'product')
-      .addSelect('product.id')
+      .addSelect(['product.id', 'product.title'])
       .addSelect('product.seller')
       // Join seller, but don't use innerJoinAndSelect for seller so we can limit its fields
       .innerJoin('product.seller', 'seller')
-      .addSelect('seller.id')
+      .addSelect(['seller.id', 'seller.stripeConnectAccountId'])
       .where('listing.id = :id', { id })
-      .andWhere('listing.expired = :expired', { expired: false });
+      .andWhere('listing.expired = :expired', { expired: false })
+      .andWhere('listing.locked = :locked', { locked: false });
 
-    if (lock) {
+    if (lock && !!manager) {
       query = query.setLock('pessimistic_write');
     }
     const listing = await query.getOne();
@@ -195,24 +210,24 @@ export class ListingsService {
     });
   }
 
-  async lockListing(id: string) {
-    await this.productListingRepository.manager.transaction(async (manager) => {
-      const listing = await manager
-        .getRepository(ProductListing)
-        .createQueryBuilder('product_listing')
-        .setLock('pessimistic_write')
-        .select(['product_listing.id', 'product_listing.locked']) // Only select what you need
-        .where('product_listing.id = :id', { id })
-        .getOne();
+  // async lockListing(id: string) {
+  //   await this.productListingRepository.manager.transaction(async (manager) => {
+  //     const listing = await manager
+  //       .getRepository(ProductListing)
+  //       .createQueryBuilder('product_listing')
+  //       .setLock('pessimistic_write')
+  //       .select(['product_listing.id', 'product_listing.locked']) // Only select what you need
+  //       .where('product_listing.id = :id', { id })
+  //       .getOne();
 
-      if (!listing) {
-        throw new Error('Product listing not found');
-      }
+  //     if (!listing) {
+  //       throw new Error('Product listing not found');
+  //     }
 
-      listing.locked = true;
-      await manager.getRepository(ProductListing).save(listing);
-    });
-  }
+  //     listing.locked = true;
+  //     await manager.getRepository(ProductListing).save(listing);
+  //   });
+  // }
 
   async setListingFinalPrice(
     id: string,
@@ -237,11 +252,13 @@ export class ListingsService {
         throw new Error('Product listing not found');
       }
 
-      // set final price
-      listing.finalPrice = listing.proposedPrice
-        .times((minThreshold / totalCommitments) * 100)
-        .round()
-        .div(100);
+      // set final price (using inverse exponential decay algorithm)
+      listing.finalPrice = calculateFinalPrice(
+        listing.proposedPrice,
+        listing.discount,
+        totalCommitments,
+        minThreshold,
+      );
 
       await manager.getRepository(ProductListing).save(listing);
     });

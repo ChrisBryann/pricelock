@@ -1,3 +1,4 @@
+import { TransactionalOutbox } from '@app/common/transactional-outbox/entities/transactional-outbox.entity';
 import { ConfigService } from '@nestjs/config';
 import { Commitment } from 'apps/commitments/src/entities/commitment.entity';
 import { ProductListing } from 'apps/listings/src/entities/product-listing.entity';
@@ -34,6 +35,7 @@ const AppDataSource = new DataSource({
           Order,
           Commitment,
           Notification,
+          TransactionalOutbox,
         ],
   migrations:
     configService.getOrThrow('NODE_ENV') === 'production'

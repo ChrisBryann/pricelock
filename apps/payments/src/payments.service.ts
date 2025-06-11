@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -7,14 +8,18 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import Stripe from 'stripe';
-import { DeepPartial, EntityManager, Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Payment } from './entities/payment.entity';
-import { formatStripeAddress, PaymentStatus } from '@app/common';
-import { OrdersService } from 'apps/orders/src/orders.service';
-import { CommitmentsService } from 'apps/commitments/src/commitments.service';
-import { OrderStatus } from '@app/common/enums/order-status.enum';
+import {
+  COMMITMENTS_MICROSERVICE,
+  PaymentStatus,
+  USERS_MICROSERVICE,
+} from '@app/common';
 import Decimal from 'decimal.js';
 import { Commitment } from 'apps/commitments/src/entities/commitment.entity';
+import { ClientProxy } from '@nestjs/microservices';
+import { firstValueFrom } from 'rxjs';
+import { User } from 'apps/users/src/entities/user.entity';
 
 @Injectable()
 export class PaymentsService {
@@ -22,10 +27,11 @@ export class PaymentsService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly ordersService: OrdersService,
-    private readonly commitmentsService: CommitmentsService,
     @InjectRepository(Payment)
     private readonly paymentsRepository: Repository<Payment>,
+    @Inject(COMMITMENTS_MICROSERVICE)
+    private readonly commitmentsMicroservice: ClientProxy,
+    @Inject(USERS_MICROSERVICE) private readonly usersMicroservice: ClientProxy,
   ) {
     this.stripe = new Stripe(
       this.configService.getOrThrow<string>('STRIPE_SECRET_KEY'),
@@ -35,48 +41,48 @@ export class PaymentsService {
     return 'Hello World!';
   }
 
-  private getStripePaymentStatus(stripeStatus: Stripe.Checkout.Session.Status) {
-    switch (stripeStatus) {
-      case 'complete':
-        return PaymentStatus.Success;
-      case 'expired':
-        return PaymentStatus.Expired;
-      case 'open':
-        return PaymentStatus.Pending;
-      default:
-        return PaymentStatus.Failed;
-    }
-  }
+  // private getStripePaymentStatus(stripeStatus: Stripe.Checkout.Session.Status) {
+  //   switch (stripeStatus) {
+  //     case 'complete':
+  //       return PaymentStatus.Success;
+  //     case 'expired':
+  //       return PaymentStatus.Expired;
+  //     case 'open':
+  //       return PaymentStatus.Pending;
+  //     default:
+  //       return PaymentStatus.Failed;
+  //   }
+  // }
 
-  private async findOneBySessionId(
-    sessionId: string,
-    manager?: EntityManager,
-    lock: boolean = false,
-  ) {
-    console.log(sessionId);
-    const repo = manager
-      ? manager.getRepository(Payment)
-      : this.paymentsRepository;
+  // private async findOneBySessionId(
+  //   sessionId: string,
+  //   manager?: EntityManager,
+  //   lock: boolean = false,
+  // ) {
+  //   console.log(sessionId);
+  //   const repo = manager
+  //     ? manager.getRepository(Payment)
+  //     : this.paymentsRepository;
 
-    let query = repo
-      .createQueryBuilder('payment')
-      .where('payment.stripeSessionId = :sessionId', { sessionId });
+  //   let query = repo
+  //     .createQueryBuilder('payment')
+  //     .where('payment.stripeFinalPaymentSessionId = :sessionId', { sessionId });
 
-    if (lock) {
-      query = query.setLock('pessimistic_write');
-    }
+  //   if (lock && !!manager) {
+  //     query = query.setLock('pessimistic_write');
+  //   }
 
-    const payment = await query.getOne();
+  //   const payment = await query.getOne();
 
-    if (!payment) {
-      throw new NotFoundException(
-        'Payment with given session ID does not exist!',
-      );
-    }
-    return payment;
-  }
+  //   if (!payment) {
+  //     throw new NotFoundException(
+  //       'Payment with given session ID does not exist!',
+  //     );
+  //   }
+  //   return payment;
+  // }
 
-  private async findOneByCommitmentId(
+  async findOneByCommitmentId(
     commitmentId: string,
     manager?: EntityManager,
     lock: boolean = false,
@@ -90,7 +96,7 @@ export class PaymentsService {
       // .innerJoinAndSelect('payment.order', 'order') // this will not fetch any record if an initial payment with no order attached to it exist
       .where('payment.commitmentId = :commitmentId', { commitmentId });
 
-    if (lock) {
+    if (lock && !!manager) {
       query = query.setLock('pessimistic_write');
     }
 
@@ -121,7 +127,7 @@ export class PaymentsService {
         failed: PaymentStatus.Failed,
       });
 
-    if (lock) {
+    if (lock && !!manager) {
       query = query.setLock('pessimistic_write');
     }
 
@@ -135,178 +141,6 @@ export class PaymentsService {
     return payment;
   }
 
-  private async updatePaymentBySessionId(
-    sessionId: string,
-    updatePaymentData: DeepPartial<Payment>,
-    manager?: EntityManager,
-  ) {
-    if (manager) {
-      await this.findOneBySessionId(sessionId, manager, true);
-
-      await manager.getRepository(Payment).update(
-        {
-          stripeSessionId: sessionId,
-        },
-        updatePaymentData,
-      );
-
-      return await this.findOneBySessionId(sessionId, manager, true);
-    }
-
-    return await this.paymentsRepository.manager.transaction(
-      async (manager) => {
-        await this.findOneBySessionId(sessionId, manager, true);
-
-        await manager.getRepository(Payment).update(
-          {
-            stripeSessionId: sessionId,
-          },
-          updatePaymentData,
-        );
-
-        return await this.findOneBySessionId(sessionId, manager, true);
-      },
-    );
-  }
-
-  // origin will be obtained as query param named as redirect_url
-  async createPayment(commitmentId: string, origin: string) {
-    /*
-     This function creates a Stripe payment embedded session for a commitment.
-     An order is created when a payment is successful
-      Things to do:
-      0. Check if an order for this commitment has been created, if so, stop creating payment
-      1. Open up the payment session and create a temporary payment object
-      2. Get commitment details for the payment session (amount, quantity, product title)
-      3. Once payment succeeded, create order object and update payment object
-     */
-    // need to check if user creating the payment is the one from commitment
-    // TODO: create new function for this in order microservice
-    const [commitment, newPayment, stripeSessionUrl]: [
-      Commitment | null,
-      Payment | null,
-      string | null,
-    ] = await this.paymentsRepository.manager.transaction(async (manager) => {
-      // 0: check if a PENDING payment exist with this commitmentId
-      // if exist the pending payment, return its stripe session id / url IF the session has not expired, a.k.a open
-
-      // 1. Get commitment details for the payment session (amount, quantity, product title)
-      const commitment = await this.commitmentsService.findOne(
-        commitmentId,
-        manager,
-      );
-
-      try {
-        const payment = await this.findOneOpenPaymentByCommitmentId(
-          commitmentId,
-          manager,
-          true,
-        );
-        if (payment.status == PaymentStatus.Pending) {
-          const session = await this.stripe.checkout.sessions.retrieve(
-            payment.stripeSessionId,
-          );
-          if (session.status === 'open') {
-            return [null, null, session.url];
-          }
-        } else if (payment.status === PaymentStatus.Inactive) {
-          // make it to a pending payment by creating a hosted stripe payment page
-          return [commitment, payment, null];
-        } else if (payment.status === PaymentStatus.Success) {
-          throw new ForbiddenException(
-            'Payment for this commitment ID has been processed!',
-          );
-        }
-      } catch {}
-
-      // 2. Open up the payment session and create a temporary payment object
-      // create an inactive payment to prepare for the stripe session
-      // once session is created successfully, we can update the payment to pending and
-      // fill in the session ID
-      const newPayment = await manager.getRepository(Payment).create({
-        commitmentId,
-        status: PaymentStatus.Inactive,
-      });
-      await manager.getRepository(Payment).save(newPayment);
-
-      return [commitment, newPayment, null];
-    });
-
-    if (stripeSessionUrl) {
-      return stripeSessionUrl;
-    }
-    let session: Stripe.Checkout.Session = null;
-    try {
-      console.log('creating session...');
-
-      session = await this.stripe.checkout.sessions.create({
-        ui_mode: 'embedded',
-        payment_method_types: ['card'],
-        shipping_address_collection: {
-          allowed_countries: ['US'],
-        },
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: commitment.listing.product.title,
-                description: commitment.listing.product.description,
-                images: [],
-              },
-              unit_amount: commitment.listing.finalPrice.toNumber(),
-            },
-            quantity: commitment.quantity,
-          },
-        ],
-        mode: 'payment',
-        return_url: `${origin}/payments/return?session_id={CHECKOUT_SESSION_ID}`,
-        metadata: {
-          buyerId: commitment.buyer.id,
-          commitmentId: commitment.id,
-        },
-        payment_intent_data: {
-          application_fee_amount: commitment.listing.finalPrice
-            .times(commitment.quantity)
-            .times(100)
-            .round()
-            .times(0.1)
-            .toNumber(),
-          transfer_data: {
-            destination:
-              commitment.listing.product.seller.stripeConnectAccountId,
-          },
-        },
-      });
-      console.log('session created');
-    } catch (error) {
-      // set payment status to failed in DB if this stripe API call fails
-      console.log('error with creating payment!');
-
-      await this.paymentsRepository.update(
-        {
-          id: newPayment.id,
-        },
-        {
-          status: PaymentStatus.Failed,
-        },
-      );
-      throw new InternalServerErrorException(
-        `Error creating Stripe embedded form: ${error.message}`,
-      );
-    }
-    // update the payment info with Stripe's session ID and amount total
-    // and set its status to Pending
-    newPayment.stripeSessionId = session.id;
-    newPayment.amount = new Decimal(session.amount_total);
-    newPayment.status = PaymentStatus.Pending;
-
-    await this.paymentsRepository.save(newPayment);
-    console.log('updated newPayment info');
-
-    return session.client_secret;
-  }
-
   async createHostedPayment(commitmentId: string, origin: string) {
     /*
      This function creates a Stripe payment hosted page session for a commitment.
@@ -317,23 +151,35 @@ export class PaymentsService {
       2. Get commitment details for the payment session (amount, quantity, product title)
       3. Once payment succeeded, create order object and update payment object
      */
+
+    // 1. Get commitment details for the payment session (amount, quantity, product title)
+    // if commitment didn't exist, then the entry_paid payment object never existed
+    // because commitment is made with the payment object under the same transaction
+    const commitment: Commitment = await firstValueFrom(
+      this.commitmentsMicroservice.send(
+        { cmd: 'findCommitmentById' },
+        {
+          id: commitmentId,
+        },
+      ),
+    );
+    commitment.listing.finalPrice = new Decimal(commitment.listing.finalPrice);
+    // get buyer information
+    const buyer: User = await firstValueFrom(
+      this.usersMicroservice.send(
+        { cmd: 'getUserById' },
+        {
+          id: commitment.buyer.id,
+        },
+      ),
+    );
     // need to check if user creating the payment is the one from commitment
     // TODO: create new function for this in order microservice
-    const [commitment, newPayment, stripeSessionUrl]: [
-      Commitment | null,
-      Payment | null,
-      string | null,
-    ] = await this.paymentsRepository.manager.transaction(async (manager) => {
-      // 0: check if a PENDING payment exist with this commitmentId
-      // if exist the pending payment, return its stripe session id / url IF the session has not expired, a.k.a open
+    const [payment, stripeSessionUrl]: [Payment | null, string | null] =
+      await this.paymentsRepository.manager.transaction(async (manager) => {
+        // 0: check if a PENDING payment exist with this commitmentId
+        // if exist the pending payment, return its stripe session id / url IF the session has not expired, a.k.a open
 
-      // 1. Get commitment details for the payment session (amount, quantity, product title)
-      const commitment = await this.commitmentsService.findOne(
-        commitmentId,
-        manager,
-      );
-
-      try {
         const payment = await this.findOneOpenPaymentByCommitmentId(
           commitmentId,
           manager,
@@ -341,33 +187,19 @@ export class PaymentsService {
         );
         if (payment.status == PaymentStatus.Pending) {
           const session = await this.stripe.checkout.sessions.retrieve(
-            payment.stripeSessionId,
+            payment.stripeFinalPaymentSessionId,
           );
           if (session.status === 'open') {
-            return [null, null, session.url];
+            return [null, session.url];
           }
-        } else if (payment.status === PaymentStatus.Inactive) {
-          // make it to a pending payment by creating a hosted stripe payment page
-          return [commitment, payment, null];
         } else if (payment.status === PaymentStatus.Success) {
           throw new ForbiddenException(
             'Payment for this commitment ID has been processed!',
           );
         }
-      } catch {}
 
-      // 2. Open up the payment session and create a temporary payment object
-      // create an inactive payment to prepare for the stripe session
-      // once session is created successfully, we can update the payment to pending and
-      // fill in the session ID
-      const newPayment = await manager.getRepository(Payment).create({
-        commitmentId,
-        status: PaymentStatus.Inactive,
+        return [payment, null];
       });
-      await manager.getRepository(Payment).save(newPayment);
-
-      return [commitment, newPayment, null];
-    });
 
     if (stripeSessionUrl) {
       return stripeSessionUrl;
@@ -376,6 +208,7 @@ export class PaymentsService {
     try {
       session = await this.stripe.checkout.sessions.create({
         ui_mode: 'hosted',
+        customer: buyer.stripeCustomerAccountId,
         payment_method_types: ['card'],
         shipping_address_collection: {
           allowed_countries: ['US'],
@@ -389,7 +222,11 @@ export class PaymentsService {
                 description: commitment.listing.product.description,
                 images: [],
               },
-              unit_amount: commitment.listing.finalPrice.times(100).toNumber(),
+              unit_amount: commitment.listing.finalPrice
+                .minus(commitment.listing.entryFee)
+                .times(100)
+                .ceil()
+                .toNumber(),
             },
             quantity: commitment.quantity,
           },
@@ -398,6 +235,7 @@ export class PaymentsService {
         success_url: `${origin}/payments/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/payments/?canceled=true`,
         metadata: {
+          action: 'createFinalPaymentCheckoutSession',
           buyerId: commitment.buyer.id,
           commitmentId: commitment.id,
         },
@@ -405,8 +243,8 @@ export class PaymentsService {
           application_fee_amount: commitment.listing.finalPrice
             .times(commitment.quantity)
             .times(100)
-            .round()
             .times(0.1)
+            .ceil()
             .toNumber(),
           transfer_data: {
             destination:
@@ -416,26 +254,31 @@ export class PaymentsService {
       });
     } catch (error) {
       // set payment status to failed in DB if this stripe API call fails
+      // TODO: DON'T SET payment status if call to API fails, just throw error so next time can call again
       console.log('error creating session');
-      await this.paymentsRepository.update(
-        {
-          id: newPayment.id,
-        },
-        {
-          status: PaymentStatus.Failed,
-        },
-      );
+      // await this.paymentsRepository.update(
+      //   {
+      //     id: payment.id,
+      //   },
+      //   {
+      //     status: PaymentStatus.Failed,
+      //   },
+      // );
       throw new InternalServerErrorException(
         `Error creating Stripe embedded form: ${error.message}`,
       );
     }
     // update the payment info with Stripe's session ID and amount total
     // and set its status to Pending
-    newPayment.stripeSessionId = session.id;
-    newPayment.amount = new Decimal(session.amount_total);
-    newPayment.status = PaymentStatus.Pending;
+    payment.stripeFinalPaymentSessionId = session.id;
+    payment.finalAmount = commitment.listing.finalPrice
+      .times(commitment.quantity)
+      .times(100)
+      .ceil()
+      .div(100);
+    payment.status = PaymentStatus.Pending;
 
-    await this.paymentsRepository.save(newPayment);
+    await this.paymentsRepository.save(payment);
 
     return session.url;
   }
@@ -465,69 +308,5 @@ export class PaymentsService {
       email: session.customer_details.email,
       buyerId: session.metadata?.buyerId,
     };
-  }
-
-  async handlePaymentSessionSuccess(session: Stripe.Checkout.Session) {
-    // Once payment succeeded, create order object and update payment object
-    await this.paymentsRepository.manager.transaction(async (manager) => {
-      const order = await this.ordersService.create(
-        {
-          commitmentId: session.metadata.commitmentId,
-          buyerId: session.metadata.buyerId,
-          lockedAt: new Date().toISOString(),
-          price: session.amount_total,
-          shippingAddress: formatStripeAddress(
-            session.shipping_details.address,
-          ),
-          status: OrderStatus.Confirmed,
-        },
-        manager,
-      );
-
-      await this.updatePaymentBySessionId(
-        session.id,
-        {
-          order: {
-            id: order.id,
-            commitment: {
-              id: order.commitment.id,
-            },
-            buyer: {
-              id: order.buyer.id,
-            },
-          },
-          stripePaymentIntentId: session.payment_intent.toString(),
-          status: this.getStripePaymentStatus(session.status),
-        },
-        manager,
-      );
-    });
-  }
-  async handlePaymentSessionFail(session: Stripe.Checkout.Session) {
-    await this.updatePaymentBySessionId(session.id, {
-      status: this.getStripePaymentStatus(session.status),
-    });
-  }
-
-  async handlePaymentIntentFail(paymentIntentId: string) {
-    await this.paymentsRepository.manager.transaction(async (manager) => {
-      // get the checkout session id from this failed payment intent
-      const sessionList = await this.stripe.checkout.sessions.list({
-        payment_intent: paymentIntentId,
-      });
-      const session = sessionList.data?.[0];
-
-      // if the checkout session exist, then use this session ID to find the payment row in DB
-      // and set the payment status to Failed
-      if (session) {
-        await this.updatePaymentBySessionId(
-          session.id,
-          {
-            status: PaymentStatus.Failed,
-          },
-          manager,
-        );
-      }
-    });
   }
 }

@@ -71,6 +71,13 @@ export class User extends DefaultEntity {
     default: false,
   })
   stripeConnectAccountLinked?: boolean;
+
+  @Column({
+    type: 'varchar',
+    nullable: true,
+    unique: true,
+  })
+  stripeCustomerAccountId?: string;
 }
 
 export type PublicUser = Omit<User, 'password'>;

@@ -36,7 +36,7 @@ export class ProductsService {
       .addSelect('seller.id')
       .where('seller.id = :sellerId', { sellerId });
 
-    if (lock) {
+    if (lock && !!manager) {
       query = query.setLock('pessimistic_write');
     }
 
@@ -58,7 +58,7 @@ export class ProductsService {
       .addSelect('seller.id')
       .where('product.id = :id', { id })
       .andWhere('seller.id = :sellerId', { sellerId });
-    if (lock) {
+    if (lock && !!manager) {
       query = query.setLock('pessimistic_write');
     }
 

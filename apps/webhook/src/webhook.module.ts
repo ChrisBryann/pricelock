@@ -9,6 +9,8 @@ import {
   PAYMENTS_MICROSERVICE,
   USERS_MICROSERVICE,
 } from '@app/common/constants/gateway.constant';
+import { TransactionalOutboxModule } from '@app/common';
+import { DatabaseModule } from '@app/common/database/database.module';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import {
         }),
       },
     ]),
+    DatabaseModule,
+    TransactionalOutboxModule,
   ],
   controllers: [WebhookController, StripeWebhookController],
   providers: [WebhookService, StripeWebhookService],

@@ -21,10 +21,6 @@ export class PaymentsController {
     private readonly paymentsMicroservice: ClientProxy,
   ) {}
 
-  //   getHello(): string {
-  //     return this.paymentsService.getHello();
-  //   }
-
   @Post('/process/:commitmentId')
   async create(
     @Param('commitmentId') commitmentId: string,

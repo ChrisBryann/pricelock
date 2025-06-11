@@ -8,7 +8,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { BmqModule } from '@app/common/bullmq/bullmq.module';
 import { LISTING_BMQ } from '@app/common/bullmq/bullmq.constant';
-import { CommitmentsModule } from 'apps/commitments/src/commitments.module';
+import { TransactionalOutboxModule } from '@app/common';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ListingsOutboxProcessor } from './listings.outbox';
 
 @Module({
   imports: [
@@ -20,9 +22,10 @@ import { CommitmentsModule } from 'apps/commitments/src/commitments.module';
     DatabaseModule,
     BmqModule.register([LISTING_BMQ]),
     TypeOrmModule.forFeature([ProductListing]),
-    CommitmentsModule,
+    ScheduleModule.forRoot(),
+    TransactionalOutboxModule,
   ],
   controllers: [ListingsController],
-  providers: [ListingsService],
+  providers: [ListingsService, ListingsOutboxProcessor],
 })
 export class ListingsModule {}

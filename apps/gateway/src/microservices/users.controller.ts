@@ -126,14 +126,14 @@ export class UsersController {
     );
   }
 
-  @Post('/link/stripe')
-  async linkUserToStripeAccount(
+  @Post('/link/stripe/connect')
+  async linkUserToStripeConnectAccount(
     @CurrentUserDecorator() user: PublicUser,
     @Body() linkUserToStripeDto: LinkUserToStripeDto,
   ): Promise<{ url: string }> {
     return await firstValueFrom(
       this.usersMicroservice.send(
-        { cmd: 'linkUserToStripeAccount' },
+        { cmd: 'linkUserToStripeConnectAccount' },
         {
           id: user.id,
           linkUserToStripeDto,

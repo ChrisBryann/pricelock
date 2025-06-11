@@ -69,6 +69,39 @@ export class ProductListing extends DefaultEntity {
   finalPrice?: Decimal;
 
   @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: {
+      // PostgreSQL returns int as string, so turn it to a Decimal object
+      to: (value: number | Decimal | null | undefined) => {
+        if (value === null || value === undefined) return null;
+        return value instanceof Decimal ? value.toString() : value;
+      },
+      from: (value: string | null) => (value ? new Decimal(value) : null),
+    },
+    nullable: true,
+  })
+  discount?: Decimal;
+
+  // calculated after reaching minThreshold
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: {
+      // PostgreSQL returns int as string, so turn it to a Decimal object
+      to: (value: number | Decimal | null | undefined) => {
+        if (value === null || value === undefined) return null;
+        return value instanceof Decimal ? value.toString() : value;
+      },
+      from: (value: string | null) => (value ? new Decimal(value) : null),
+    },
+    nullable: true,
+  })
+  entryFee?: Decimal;
+
+  @Column({
     type: 'boolean',
     default: false,
   })

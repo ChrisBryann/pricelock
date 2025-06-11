@@ -8,16 +8,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Order } from './entities/order.entity';
 import { EntityManager, Repository } from 'typeorm';
 import { OrderStatus } from '@app/common/enums/order-status.enum';
-import { InjectQueue } from '@nestjs/bullmq';
-import { ORDERS_BMQ } from '@app/common/bullmq/bullmq.constant';
-import { Queue } from 'bullmq';
 
 @Injectable()
 export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly ordersRepository: Repository<Order>,
-    @InjectQueue(ORDERS_BMQ) private readonly ordersQueue: Queue,
   ) {}
   getHello(): string {
     return 'Hello World!';
@@ -27,7 +23,7 @@ export class OrdersService {
     // create orders based off the commitment id
     const repo = manager ? manager.getRepository(Order) : this.ordersRepository;
     try {
-      await this.findOneByCommtimentId(
+      await this.findOneByCommitmentId(
         createOrderDto.commitmentId,
         manager,
         true,
@@ -51,21 +47,7 @@ export class OrdersService {
     return await repo.save(order);
   }
 
-  async createBulk(createOrderDtos: CreateOrderDto[]) {
-    // TODO: In each bullk job, have a single transaction to create the item, unless creating item doesn't depend on other rows
-    await this.ordersQueue.addBulk(
-      createOrderDtos.map((createOrderDto) => ({
-        name: 'createOrder',
-        data: createOrderDto,
-        opts: {
-          removeOnComplete: true,
-          removeOnFail: false,
-        },
-      })),
-    );
-  }
-
-  async findOneByCommtimentId(
+  async findOneByCommitmentId(
     commitmentId: string,
     manager?: EntityManager,
     lock: boolean = false,
@@ -78,7 +60,7 @@ export class OrdersService {
       .addSelect('commitment.id')
       .where('commitment.id = :id', { id: commitmentId });
 
-    if (lock) {
+    if (lock && !!manager) {
       query = query.setLock('pessimistic_write');
     }
 
@@ -102,7 +84,7 @@ export class OrdersService {
       .addSelect('buyer.id')
       .where('order.id = :id', { id });
 
-    if (lock) {
+    if (lock && !!manager) {
       query = query.setLock('pessimistic_write');
     }
 

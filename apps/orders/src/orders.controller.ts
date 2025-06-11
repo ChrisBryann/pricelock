@@ -18,16 +18,14 @@ export class OrdersController {
     await this.ordersService.create(createOrderDto);
   }
 
-  @EventPattern('createOrderBulk')
-  async createBulk(
-    @Payload('createOrderDtos') createOrderDtos: CreateOrderDto[],
-  ) {
-    await this.ordersService.createBulk(createOrderDtos);
-  }
-
   @MessagePattern({ cmd: 'getOrderById' })
   async findOne(@Payload('id') id: string) {
     return await this.ordersService.findOne(id);
+  }
+  // this is for CommitmentConsumer
+  @MessagePattern({ cmd: 'findOneByCommitmentId' })
+  async findOneByCommitmentId(@Payload('commitmentId') commitmentId: string) {
+    return await this.ordersService.findOneByCommitmentId(commitmentId);
   }
 
   @MessagePattern({ cmd: 'updateOrderStatus' })

@@ -54,25 +54,25 @@ export class UsersController {
     await this.usersService.deleteUserById(id);
   }
 
-  @MessagePattern({ cmd: 'linkUserToStripeAccount' })
-  async linkUserToStripeAccount(
+  @MessagePattern({ cmd: 'linkUserToStripeConnectAccount' })
+  async linkUserToStripeConnectAccount(
     @Payload('id') id: string,
     @Payload('linkUserToStripeDto') linkUserToStripeDto: LinkUserToStripeDto,
     // combine stripeConnectAccountId, refresh and return url payload into one DTO
   ): Promise<{ url: string }> {
-    return await this.usersService.linkUserToStripeAccount(
+    return await this.usersService.linkUserToStripeConnectAccount(
       id,
       linkUserToStripeDto,
     );
   }
 
-  @MessagePattern({ cmd: 'updateUserStripeAccount' })
-  async updateUserStripeAccount(
+  @MessagePattern({ cmd: 'updateUserStripeConnectAccount' })
+  async updateUserStripeConnectAccount(
     @Payload('stripeAccountId') stripeAccountId: string,
     @Payload('stripeConnectAccountLinked') stripeConnectAccountLinked: boolean,
   ) {
     // if user is linked with stripe, update it's boolean property to true
-    await this.usersService.updateUserStripeAccount(
+    await this.usersService.updateUserStripeConnectAccount(
       stripeAccountId,
       stripeConnectAccountLinked,
     );

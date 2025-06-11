@@ -66,10 +66,10 @@ export class ListingsController {
     );
   }
 
-  @MessagePattern({ cmd: 'lockListing' })
-  async lockListing(@Payload('id') id: string) {
-    await this.listingsService.lockListing(id);
-  }
+  // @MessagePattern({ cmd: 'lockListing' })
+  // async lockListing(@Payload('id') id: string) {
+  //   await this.listingsService.lockListing(id);
+  // }
 
   @MessagePattern({ cmd: 'closeExpiredListing' })
   async closeExpiredListing(@Payload('id') id: string) {

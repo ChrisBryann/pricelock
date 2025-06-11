@@ -22,12 +22,4 @@ export class StripeWebhookController {
   ) {
     await this.stripeWebhookService.handleAccountWebhook(body, signature);
   }
-
-  @Post('/payment-intent')
-  async handlePaymentIntentWebhook(
-    @Body() body: Buffer,
-    @Headers('stripe-signature') signature: string,
-  ) {
-    await this.stripeWebhookService.handlePaymentIntentWebhook(body, signature);
-  }
 }

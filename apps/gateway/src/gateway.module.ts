@@ -22,9 +22,10 @@ import {
   UsersController,
   PaymentsController,
 } from './microservices';
-import { BmqModule } from '@app/common/bullmq/bullmq.module';
 import { ListingsConsumer } from './consumers';
-import { LISTING_BMQ } from '@app/common/bullmq/bullmq.constant';
+import { TransactionalOutboxModule } from '@app/common';
+import { DatabaseModule } from '@app/common/database/database.module';
+import { CommitmentsConsumer } from './consumers/commitments.consumer';
 
 @Module({
   imports: [
@@ -112,7 +113,8 @@ import { LISTING_BMQ } from '@app/common/bullmq/bullmq.constant';
       },
     ]),
     AuthGatewayModule,
-    BmqModule.register([LISTING_BMQ]),
+    DatabaseModule,
+    TransactionalOutboxModule,
   ],
   controllers: [
     GatewayController,
@@ -124,6 +126,6 @@ import { LISTING_BMQ } from '@app/common/bullmq/bullmq.constant';
     PaymentsController,
     OrdersController,
   ],
-  providers: [GatewayService, ListingsConsumer],
+  providers: [GatewayService, ListingsConsumer, CommitmentsConsumer],
 })
 export class GatewayModule {}

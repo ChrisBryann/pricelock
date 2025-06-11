@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
-import { BmqModule } from '@app/common/bullmq/bullmq.module';
-import { ORDERS_BMQ } from '@app/common/bullmq/bullmq.constant';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from '@app/common/database/database.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -11,6 +9,9 @@ import { Commitment } from 'apps/commitments/src/entities/commitment.entity';
 import { User } from 'apps/users/src/entities/user.entity';
 import { ProductListing } from 'apps/listings/src/entities/product-listing.entity';
 import { Product } from 'apps/listings/src/products/entities/product.entity';
+import { TransactionalOutboxModule } from '@app/common';
+import { OrdersOutboxProcessor } from './orders.outbox';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -26,10 +27,11 @@ import { Product } from 'apps/listings/src/products/entities/product.entity';
       ProductListing,
       Product,
     ]),
-    BmqModule.register([ORDERS_BMQ]),
+    ScheduleModule.forRoot(),
+    TransactionalOutboxModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrdersOutboxProcessor],
   exports: [OrdersService],
 })
 export class OrdersModule {}
