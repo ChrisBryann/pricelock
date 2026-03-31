@@ -95,6 +95,7 @@ export class OrdersOutboxProcessor extends DefaultOutboxProcessor {
                 await manager.getRepository(TransactionalOutbox).save(event);
               },
             );
+            break;
           }
 
           case 'closeCommitment': {

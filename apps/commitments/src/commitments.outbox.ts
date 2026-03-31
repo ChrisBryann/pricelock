@@ -33,7 +33,7 @@ export class CommitmentsOutboxProcessor extends DefaultOutboxProcessor {
     for (const event of pendingEvents) {
       try {
         switch (event.eventType) {
-          case 'getAgregatedDataByListingId': {
+          case 'getAggregatedDataByListingId': {
             const payload = event.payload as {
               userId: string;
               listingId: string;
@@ -132,6 +132,7 @@ export class CommitmentsOutboxProcessor extends DefaultOutboxProcessor {
                 await manager.getRepository(TransactionalOutbox).save(event);
               },
             );
+            break;
           }
 
           case 'closeExpiredCommitment': {
@@ -150,6 +151,7 @@ export class CommitmentsOutboxProcessor extends DefaultOutboxProcessor {
                 await manager.getRepository(TransactionalOutbox).save(event);
               },
             );
+            break;
           }
 
           default:

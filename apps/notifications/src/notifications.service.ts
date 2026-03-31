@@ -32,7 +32,7 @@ export class NotificationsService {
       .createQueryBuilder('notification')
       .leftJoin('notification.user', 'user')
       .addSelect('user.id')
-      .where('user.id := userId', { userId })
+      .where('user.id = :userId', { userId })
       .getMany();
   }
 }

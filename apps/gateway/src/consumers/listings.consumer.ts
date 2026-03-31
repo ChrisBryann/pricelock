@@ -34,7 +34,7 @@ export class ListingsConsumer extends WorkerHost {
             await manager.getRepository(TransactionalOutbox).save(
               manager.getRepository(TransactionalOutbox).create({
                 channel: COMMITMENTS_OUTBOX_CHANNEL,
-                eventType: 'getAgregatedDataByListingId',
+                eventType: 'getAggregatedDataByListingId',
                 payload: {
                   userId: sellerId,
                   listingId,

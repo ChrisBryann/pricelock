@@ -26,6 +26,8 @@ import { ListingsConsumer } from './consumers';
 import { TransactionalOutboxModule } from '@app/common';
 import { DatabaseModule } from '@app/common/database/database.module';
 import { CommitmentsConsumer } from './consumers/commitments.consumer';
+import { BmqModule } from '@app/common/bullmq/bullmq.module';
+import { COMMITMENT_BMQ, LISTING_BMQ } from '@app/common';
 
 @Module({
   imports: [
@@ -115,6 +117,7 @@ import { CommitmentsConsumer } from './consumers/commitments.consumer';
     AuthGatewayModule,
     DatabaseModule,
     TransactionalOutboxModule,
+    BmqModule.register([LISTING_BMQ, COMMITMENT_BMQ]),
   ],
   controllers: [
     GatewayController,

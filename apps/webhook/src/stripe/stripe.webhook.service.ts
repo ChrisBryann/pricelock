@@ -52,46 +52,51 @@ export class StripeWebhookService {
           const session = event.data.object as Stripe.Checkout.Session;
           const action = session.metadata.action;
           if (action === 'createEntryFeeCheckoutSession') {
-            // update payment row to have status entry_paid and add their entry fee payment intent ID
-            await this.transactionalOutboxRepository.save(
-              this.transactionalOutboxRepository.create({
-                channel: PAYMENTS_OUTBOX_CHANNEL,
-                eventType: 'entryFeeCheckoutSessionSuccess',
-                payload: {
-                  sessionId: session.id,
-                  paymentIntentId: session.payment_intent.toString(),
-                },
-              }),
-            );
+            // Idempotency: skip if this session was already enqueued
+            const duplicate = await this.transactionalOutboxRepository
+              .createQueryBuilder('outbox')
+              .where('outbox.channel = :channel', { channel: PAYMENTS_OUTBOX_CHANNEL })
+              .andWhere('outbox.eventType = :eventType', { eventType: 'entryFeeCheckoutSessionSuccess' })
+              .andWhere("outbox.payload->>'sessionId' = :sessionId", { sessionId: session.id })
+              .getOne();
+            if (!duplicate) {
+              // update payment row to have status entry_paid and add their entry fee payment intent ID
+              await this.transactionalOutboxRepository.save(
+                this.transactionalOutboxRepository.create({
+                  channel: PAYMENTS_OUTBOX_CHANNEL,
+                  eventType: 'entryFeeCheckoutSessionSuccess',
+                  payload: {
+                    sessionId: session.id,
+                    paymentIntentId: session.payment_intent.toString(),
+                  },
+                }),
+              );
+            }
           } else if (action === 'createFinalPaymentCheckoutSession') {
-            // Once payment succeeded, create order object and update payment object
-            await this.transactionalOutboxRepository.save(
-              this.transactionalOutboxRepository.create({
-                channel: ORDERS_OUTBOX_CHANNEL,
-                eventType: 'finalPaymentCheckoutSessionSuccess',
-                payload: {
-                  amount_total: session.amount_total,
-                  shipping_address: session.shipping_details.address,
-                  commitmentId: session.metadata.commitmentId,
-                  buyerId: session.metadata.buyerId,
-                  sessionId: session.id,
-                  paymentIntentId: session.payment_intent.toString(),
-                },
-              }),
-            );
-            //   await firstValueFrom(
-            //     this.paymentsMicroservice.send(
-            //       {
-            //         cmd: 'handlePaymentSessionSuccess',
-            //       },
-            //       {
-            //         session,
-            //       },
-            //     ),
-            //     {
-            //       defaultValue: null,
-            //     },
-            //   );
+            // Idempotency: skip if this session was already enqueued
+            const duplicate = await this.transactionalOutboxRepository
+              .createQueryBuilder('outbox')
+              .where('outbox.channel = :channel', { channel: ORDERS_OUTBOX_CHANNEL })
+              .andWhere('outbox.eventType = :eventType', { eventType: 'finalPaymentCheckoutSessionSuccess' })
+              .andWhere("outbox.payload->>'sessionId' = :sessionId", { sessionId: session.id })
+              .getOne();
+            if (!duplicate) {
+              // Once payment succeeded, create order object and update payment object
+              await this.transactionalOutboxRepository.save(
+                this.transactionalOutboxRepository.create({
+                  channel: ORDERS_OUTBOX_CHANNEL,
+                  eventType: 'finalPaymentCheckoutSessionSuccess',
+                  payload: {
+                    amount_total: session.amount_total,
+                    shipping_address: session.shipping_details.address,
+                    commitmentId: session.metadata.commitmentId,
+                    buyerId: session.metadata.buyerId,
+                    sessionId: session.id,
+                    paymentIntentId: session.payment_intent.toString(),
+                  },
+                }),
+              );
+            }
           }
 
           // TODO: log / send out notification that payment succeeded

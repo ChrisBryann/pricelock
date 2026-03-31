@@ -121,6 +121,34 @@ export class ListingsOutboxProcessor extends DefaultOutboxProcessor {
             break;
           }
 
+          case 'closeExpiredListing': {
+            const payload = event.payload as {
+              id: string;
+            };
+            await this.transactionalOutboxRepository.manager.transaction(
+              async (manager) => {
+                const listing = await manager
+                  .getRepository(ProductListing)
+                  .createQueryBuilder('product_listing')
+                  .setLock('pessimistic_write')
+                  .select(['product_listing.id', 'product_listing.expired'])
+                  .where('product_listing.id = :id', { id: payload.id })
+                  .getOne();
+
+                if (!listing) {
+                  throw new Error('Product listing not found');
+                }
+
+                listing.expired = true;
+                await manager.getRepository(ProductListing).save(listing);
+
+                event.processed = true;
+                await manager.getRepository(TransactionalOutbox).save(event);
+              },
+            );
+            break;
+          }
+
           default:
             break;
         }
