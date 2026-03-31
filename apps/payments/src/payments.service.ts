@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -24,6 +25,7 @@ import { User } from 'apps/users/src/entities/user.entity';
 @Injectable()
 export class PaymentsService {
   private stripe: Stripe;
+  private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
     private readonly configService: ConfigService,
@@ -175,34 +177,32 @@ export class PaymentsService {
     );
     // need to check if user creating the payment is the one from commitment
     // TODO: create new function for this in order microservice
-    const [payment, stripeSessionUrl]: [Payment | null, string | null] =
+    // Check if a non-expired payment already exists for this commitment.
+    // If a pending session is still open, return its URL directly.
+    const existingSessionUrl: string | null =
       await this.paymentsRepository.manager.transaction(async (manager) => {
-        // 0: check if a PENDING payment exist with this commitmentId
-        // if exist the pending payment, return its stripe session id / url IF the session has not expired, a.k.a open
-
         const payment = await this.findOneOpenPaymentByCommitmentId(
           commitmentId,
           manager,
           true,
         );
-        if (payment.status == PaymentStatus.Pending) {
+        if (payment.status === PaymentStatus.Pending) {
           const session = await this.stripe.checkout.sessions.retrieve(
             payment.stripeFinalPaymentSessionId,
           );
           if (session.status === 'open') {
-            return [null, session.url];
+            return session.url;
           }
         } else if (payment.status === PaymentStatus.Success) {
           throw new ForbiddenException(
             'Payment for this commitment ID has been processed!',
           );
         }
-
-        return [payment, null];
+        return null;
       });
 
-    if (stripeSessionUrl) {
-      return stripeSessionUrl;
+    if (existingSessionUrl) {
+      return existingSessionUrl;
     }
     let session: Stripe.Checkout.Session = null;
     try {
@@ -255,7 +255,7 @@ export class PaymentsService {
     } catch (error) {
       // set payment status to failed in DB if this stripe API call fails
       // TODO: DON'T SET payment status if call to API fails, just throw error so next time can call again
-      console.log('error creating session');
+      this.logger.error(`createHostedPayment - Failed to create Stripe session: ${error.message}`);
       // await this.paymentsRepository.update(
       //   {
       //     id: payment.id,
@@ -268,19 +268,39 @@ export class PaymentsService {
         `Error creating Stripe embedded form: ${error.message}`,
       );
     }
-    // update the payment info with Stripe's session ID and amount total
-    // and set its status to Pending
-    payment.stripeFinalPaymentSessionId = session.id;
-    payment.finalAmount = commitment.listing.finalPrice
-      .times(commitment.quantity)
-      .times(100)
-      .ceil()
-      .div(100);
-    payment.status = PaymentStatus.Pending;
+    // Update the payment with the new session inside a locked transaction.
+    // If a concurrent request already claimed this payment, expire our
+    // newly created session and return the existing open session URL instead.
+    const finalUrl = await this.paymentsRepository.manager.transaction(
+      async (manager) => {
+        const paymentToUpdate = await this.findOneOpenPaymentByCommitmentId(
+          commitmentId,
+          manager,
+          true,
+        );
 
-    await this.paymentsRepository.save(payment);
+        if (paymentToUpdate.status === PaymentStatus.Pending) {
+          // Another concurrent request beat us to it — clean up our orphaned session
+          await this.stripe.checkout.sessions.expire(session.id);
+          const existingSession = await this.stripe.checkout.sessions.retrieve(
+            paymentToUpdate.stripeFinalPaymentSessionId,
+          );
+          return existingSession.url;
+        }
 
-    return session.url;
+        paymentToUpdate.stripeFinalPaymentSessionId = session.id;
+        paymentToUpdate.finalAmount = commitment.listing.finalPrice
+          .times(commitment.quantity)
+          .times(100)
+          .ceil()
+          .div(100);
+        paymentToUpdate.status = PaymentStatus.Pending;
+        await manager.getRepository(Payment).save(paymentToUpdate);
+        return session.url;
+      },
+    );
+
+    return finalUrl;
   }
 
   async getPaymentStatus(paymentId: string, manager?: EntityManager) {

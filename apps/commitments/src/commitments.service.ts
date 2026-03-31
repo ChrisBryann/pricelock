@@ -55,7 +55,7 @@ export class CommitmentsService {
         },
       ),
     );
-    console.log(listing);
+    this.logger.log(`commitment_create - fetched listing: ${listing.id}`);
     listing.entryFee = new Decimal(listing.entryFee);
     // get buyer information
     const buyer: User = await firstValueFrom(
@@ -325,6 +325,7 @@ export class CommitmentsService {
   async cancelCommitment(buyerId: string, id: string, manager?: EntityManager) {
     if (manager) {
       await this.cancelCommitmentWithLock(buyerId, id, manager);
+      return;
     }
     await this.commitmentRepository.manager.transaction(async (manager) => {
       await this.cancelCommitmentWithLock(buyerId, id, manager);

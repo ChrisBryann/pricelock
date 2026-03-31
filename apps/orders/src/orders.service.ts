@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -11,6 +12,7 @@ import { OrderStatus } from '@app/common/enums/order-status.enum';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
   constructor(
     @InjectRepository(Order)
     private readonly ordersRepository: Repository<Order>,
@@ -28,11 +30,16 @@ export class OrdersService {
         manager,
         true,
       );
-      // if an order with the given commitment Id exists already, then throw error
+      // if an order with the given commitment Id exists already, throw to block creation
       throw new ForbiddenException(
         'Order with the given commitment ID already exist!',
       );
-    } catch {}
+    } catch (error) {
+      if (!(error instanceof NotFoundException)) {
+        throw error;
+      }
+      // NotFoundException means no order exists yet — safe to proceed
+    }
 
     const order = await repo.create({
       ...createOrderDto,
